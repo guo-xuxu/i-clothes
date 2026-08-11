@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>i-clothes 智能穿搭助手</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <main class="container">
+        <header>
+            <h1>i-clothes 智能穿搭助手</h1>
+            <p class="subtitle">上传参考照片，获取个性化穿搭建议</p>
+        </header>
+
+        <form id="recommend-form">
+            <div class="upload-area" id="upload-area">
+                <input type="file" id="file-input" accept="image/jpeg,image/png" multiple hidden>
+                <p class="upload-hint">点击或拖拽上传照片（最多 3 张，JPG/PNG）</p>
+                <div class="preview" id="preview"></div>
+            </div>
+
+            <textarea id="description" placeholder="可选：补充说明，例如“参加朋友婚礼”“日常通勤”"></textarea>
+
+            <button type="submit" id="submit-btn">生成穿搭建议</button>
+        </form>
+
+        <section class="result" id="result" hidden>
+            <h2>穿搭建议</h2>
+            <div class="result-content" id="result-content"></div>
+        </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
