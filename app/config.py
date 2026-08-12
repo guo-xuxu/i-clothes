@@ -14,11 +14,12 @@ class Settings:
         "QIANWEN_BASE_URL",
         "https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
-    QIANWEN_MODEL: str = os.getenv("QIANWEN_MODEL", "qwen-vl-max")
+    QIANWEN_MODEL: str = os.getenv("QIANWEN_MODEL", "qwen3.7-max-2026-06-08")
 
     # DeepSeek（后续版本）
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
     DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MEDEL", "deepseek-v4-pro")
 
     # 上传限制
     MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "5"))
@@ -28,3 +29,10 @@ class Settings:
 
 
 settings = Settings()
+
+print(settings.QIANWEN_API_KEY)
+print(settings.QIANWEN_MODEL)
+print(settings.QIANWEN_BASE_URL)
+print(Settings.DEEPSEEK_API_KEY)
+print(Settings.DEEPSEEK_BASE_URL)
+print(Settings.DEEPSEEK_MODEL)

@@ -10,7 +10,7 @@ from langchain_openai import ChatOpenAI
 from app.config import settings
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=2)
 def get_qianwen_vl() -> ChatOpenAI:
     """返回通义千问多模态模型（通过 OpenAI 兼容端点）。
 
@@ -30,12 +30,12 @@ def get_qianwen_vl() -> ChatOpenAI:
 
 
 # 后续版本：DeepSeek 识别/生图模型
-# @lru_cache(maxsize=1)
-# def get_deepseek() -> ChatOpenAI:
-#     if not settings.DEEPSEEK_API_KEY:
-#         raise RuntimeError("DEEPSEEK_API_KEY 未配置")
-#     return ChatOpenAI(
-#         model="deepseek-chat",
-#         api_key=settings.DEEPSEEK_API_KEY,
-#         base_url=settings.DEEPSEEK_BASE_URL,
-#     )
+@lru_cache(maxsize=2)
+def get_deepseek() -> ChatOpenAI:
+    if not settings.DEEPSEEK_API_KEY:
+        raise RuntimeError("DEEPSEEK_API_KEY 未配置")
+    return ChatOpenAI(
+        model="deepseek-chat",
+        api_key=settings.DEEPSEEK_API_KEY,
+        base_url=settings.DEEPSEEK_BASE_URL,
+    )
