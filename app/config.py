@@ -29,10 +29,3 @@ class Settings:
 
 
 settings = Settings()
-
-print(settings.QIANWEN_API_KEY)
-print(settings.QIANWEN_MODEL)
-print(settings.QIANWEN_BASE_URL)
-print(Settings.DEEPSEEK_API_KEY)
-print(Settings.DEEPSEEK_BASE_URL)
-print(Settings.DEEPSEEK_MODEL)
