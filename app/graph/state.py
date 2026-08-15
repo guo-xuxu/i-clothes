@@ -13,4 +13,5 @@ class OutfitState(TypedDict, total=False):
 
     images: list[str]
     description: str
+    appearance: str
     suggestion: str

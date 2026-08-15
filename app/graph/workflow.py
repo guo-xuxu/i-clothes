@@ -8,7 +8,7 @@ from functools import lru_cache
 
 from langgraph.graph import END, START, StateGraph
 
-from app.graph.nodes import analyze_scene
+from app.graph.nodes import analyze_appearance, recommend_outfit
 from app.graph.state import OutfitState
 
 
@@ -17,10 +17,12 @@ def get_workflow():
     """构建并编译穿搭推荐工作流图。"""
     graph = StateGraph(OutfitState)
 
-    graph.add_node("analyze_scene", analyze_scene)
+    graph.add_node("analyze_appearance", analyze_appearance)
+    graph.add_node("recommend_outfit", recommend_outfit)
 
-    graph.add_edge(START, "analyze_scene")
-    graph.add_edge("analyze_scene", END)
+    graph.add_edge(START, "analyze_appearance")
+    graph.add_edge("analyze_appearance", "recommend_outfit")
+    graph.add_edge("recommend_outfit", END)
 
     return graph.compile()
 

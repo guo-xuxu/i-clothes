@@ -6,10 +6,21 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+# Phoenix tracing：官方 register() 自动配置 OTLP 导出并挂载 instrumentor
+from phoenix.otel import register
+
 from app.config import settings
 from app.graph.workflow import run_recommendation
 
+register(
+    project_name="i-clothes",
+    auto_instrument=True,
+)
+print("[Phoenix] Tracing enabled. Make sure Phoenix server is running at http://localhost:6006")
+
 app = FastAPI(title="i-clothes 智能穿搭助手", version="0.1.0")
+
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"

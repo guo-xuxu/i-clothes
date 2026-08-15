@@ -35,7 +35,9 @@ def get_deepseek() -> ChatOpenAI:
     if not settings.DEEPSEEK_API_KEY:
         raise RuntimeError("DEEPSEEK_API_KEY 未配置")
     return ChatOpenAI(
-        model="deepseek-chat",
+        model=settings.DEEPSEEK_MODEL,
         api_key=settings.DEEPSEEK_API_KEY,
         base_url=settings.DEEPSEEK_BASE_URL,
+        temperature=0.7,
+        timeout=60,
     )
