@@ -12,6 +12,9 @@ dist/
 *.egg-info/
 .pytest_cache/
 
+# Node（Vue 前端）
+node_modules/
+
 # 环境变量（含 API 密钥）
 .env
 
