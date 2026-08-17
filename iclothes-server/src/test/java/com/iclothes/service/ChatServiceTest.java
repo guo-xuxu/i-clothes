@@ -73,6 +73,7 @@ class ChatServiceTest {
         verify(agentClient, times(1)).chat(eq("你好"), anyList(), anyList()); // 恰好一次 = 不重试
         verify(conversations).appendUser(eq(cid), eq("你好"), anyList());
         verify(conversations).appendAssistant(eq(cid), eq("回复"), eq("chat"));
+        verify(conversations).touch(cid); // I3：append 同事务内触达 updated_at
         verify(conversations).trim(cid);
         verify(sessionLock).release(lockKey);
     }

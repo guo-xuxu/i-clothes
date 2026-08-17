@@ -29,6 +29,8 @@ iclothes:
     max-size-mb: 5
   rate-limit:
     per-minute: 60
+    # 仅部署在可信反向代理之后时设为 true，否则 X-Forwarded-For 可被客户端伪造绕过限流
+    trust-x-forwarded-for: false
   frontend:
     dir: ${FRONTEND_DIST:frontend/dist}
 

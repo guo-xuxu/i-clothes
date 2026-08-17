@@ -1,6 +1,5 @@
 package com.iclothes.dto;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 public class MessageDto {
@@ -8,7 +7,7 @@ public class MessageDto {
     private String content;
     private String intent;
     private List<String> images;
-    private LocalDateTime createdAt;
+    private Long createdAt;
 
     public String getRole() { return role; }
     public void setRole(String v) { role = v; }
@@ -18,6 +17,6 @@ public class MessageDto {
     public void setIntent(String v) { intent = v; }
     public List<String> getImages() { return images; }
     public void setImages(List<String> v) { images = v; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime v) { createdAt = v; }
+    public Long getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Long v) { createdAt = v; }
 }

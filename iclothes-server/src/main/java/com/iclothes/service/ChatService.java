@@ -62,6 +62,8 @@ public class ChatService {
             String title = transactionTemplate.execute(status -> {
                 conversations.appendUser(cid, message, images);
                 conversations.appendAssistant(cid, resp.reply(), resp.intent());
+                // I3：追加消息即触达 updated_at，会话列表按更新时间倒序（spec §3.1）
+                conversations.touch(cid);
                 conversations.trim(cid);
 
                 String t = conversations.getTitle(cid);

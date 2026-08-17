@@ -1,11 +1,16 @@
 """Agent 服务契约接口：无状态推理入口（Java 业务后端调用）。"""
+import logging
 import re
 
+import httpx
+import openai
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.graph.workflow import run_chat
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -55,9 +60,10 @@ async def agent_chat(payload: AgentChatRequest) -> AgentChatResponse:
     except HTTPException:
         # 校验类异常保持原状（当前 run_chat 内部不抛，仅防御性保留）
         raise
-    except Exception as exc:
-        # LLM/HTTP 提供方异常（openai APIError、httpx 超时/连接错误、
-        # API Key 未配置的 RuntimeError 等）统一 502 —— spec v2 §4.1
-        # 「LLM 未配置/调用失败 502 {"detail"}」；不重试（避免重复扣费）
+    except (openai.APIError, httpx.HTTPError, RuntimeError) as exc:
+        # 仅"LLM 未配置/调用失败"映射 502（spec v2 §4.1）：model_repo 缺 API Key 抛
+        # RuntimeError，openai/httpx 为提供方调用失败。其余编码类异常（KeyError/TypeError
+        # 等）不再被 502 掩盖，交给 FastAPI 兜底记 500 —— 评审 I2 收窄 + 可观测性
+        logger.exception("Agent 推理失败（LLM 未配置或调用失败）: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc))
     return AgentChatResponse(reply=result["reply"], intent=result["intent"])

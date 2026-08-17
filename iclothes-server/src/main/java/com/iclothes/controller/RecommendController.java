@@ -32,7 +32,7 @@ public class RecommendController {
             @RequestParam(value = "images", required = false) List<MultipartFile> images,
             @RequestParam(value = "description", defaultValue = "") String description,
             HttpServletRequest http) {
-        if (!rateLimiter.allow(http.getRemoteAddr())) {
+        if (!rateLimiter.allow(clientIp(http))) {
             throw new ApiException(429, "请求过于频繁，请稍后重试");
         }
         if (images == null || images.isEmpty()) {
@@ -64,5 +64,16 @@ public class RecommendController {
         }
         var resp = chatService.chat(null, description, urls);
         return Map.of("suggestion", resp.getReply());
+    }
+
+    private String clientIp(HttpServletRequest http) {
+        // 与 ChatController 统一：默认用 remoteAddr，仅 trust-x-forwarded-for=true 时取 XFF 首值
+        if (properties.getRateLimit().isTrustXForwardedFor()) {
+            String fwd = http.getHeader("X-Forwarded-For");
+            if (fwd != null && !fwd.isBlank()) {
+                return fwd.split(",")[0].trim();
+            }
+        }
+        return http.getRemoteAddr();
     }
 }

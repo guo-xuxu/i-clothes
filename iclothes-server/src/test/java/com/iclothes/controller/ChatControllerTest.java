@@ -31,6 +31,9 @@ class ChatControllerTest {
 
     @Autowired MockMvc mvc;
 
+    @Autowired
+    com.iclothes.config.AppProperties properties;
+
     @MockitoBean
     ChatService chatService;
 
@@ -105,6 +108,39 @@ class ChatControllerTest {
                         .content("{\"message\":\"你好\",\"images\":[]}"))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.detail").value("请求过于频繁，请稍后重试"));
+    }
+
+    @Test
+    void rateLimitKeyIgnoresXffByDefault() throws Exception {
+        // I1：trust-x-forwarded-for 默认 false —— 带 XFF 头也必须按 remoteAddr 限流（防伪造绕过）
+        when(rateLimiter.allow("127.0.0.1")).thenReturn(true);
+        when(chatService.chat(any(), any(), anyList()))
+                .thenReturn(new ChatResponse("abc", "回复", "chat", "新对话"));
+        mvc.perform(post("/api/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Forwarded-For", "203.0.113.9")
+                        .content("{\"message\":\"你好\",\"images\":[]}"))
+                .andExpect(status().isOk());
+        verify(rateLimiter).allow("127.0.0.1");
+    }
+
+    @Test
+    void rateLimitKeyUsesXffWhenTrusted() throws Exception {
+        // I1：trust-x-forwarded-for=true 时才取 XFF 首值（仅限可信代理之后部署）
+        properties.getRateLimit().setTrustXForwardedFor(true);
+        try {
+            when(rateLimiter.allow("203.0.113.9")).thenReturn(true);
+            when(chatService.chat(any(), any(), anyList()))
+                    .thenReturn(new ChatResponse("abc", "回复", "chat", "新对话"));
+            mvc.perform(post("/api/chat")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("X-Forwarded-For", "203.0.113.9, 10.0.0.1")
+                            .content("{\"message\":\"你好\",\"images\":[]}"))
+                    .andExpect(status().isOk());
+            verify(rateLimiter).allow("203.0.113.9");
+        } finally {
+            properties.getRateLimit().setTrustXForwardedFor(false);
+        }
     }
 
     @Test

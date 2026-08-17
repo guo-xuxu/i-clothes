@@ -3,7 +3,8 @@ package com.iclothes.agent;
 import java.util.List;
 import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -14,6 +15,8 @@ import com.iclothes.exception.AgentValidationException;
 
 @Component
 public class PythonAgentClient {
+
+    private static final Logger log = LoggerFactory.getLogger(PythonAgentClient.class);
 
     private final RestClient chatClient;
     private final RestClient healthClient;
@@ -50,8 +53,13 @@ public class PythonAgentClient {
             if (e.getStatusCode().value() == 400) {
                 throw new AgentValidationException(extractDetail(e.getResponseBodyAsString()));
             }
+            // I2：非 400 响应不再静默吞掉——记录状态码与响应体 detail，保证故障可观测
+            log.error("Python agent 返回非 400 状态 {}，响应体 detail={}，按 502 处理",
+                    e.getStatusCode().value(), extractDetail(e.getResponseBodyAsString()), e);
             throw new AgentUnavailableException("AI 服务暂不可用，请稍后重试", e);
         } catch (RestClientException e) {
+            // I2：连接/超时失败同样落日志（含异常堆栈），避免"故障后日志里查不到原因"
+            log.error("Python agent 调用失败（连接/超时）: {}", e.getMessage(), e);
             throw new AgentUnavailableException("AI 服务暂不可用，请稍后重试", e);
         }
     }

@@ -11,7 +11,8 @@ import com.iclothes.entity.Conversation;
 public interface ConversationMapper extends BaseMapper<Conversation> {
 
     @Select("""
-        SELECT c.id::text AS id, c.title, c.updated_at AS updatedAt,
+        SELECT c.id::text AS id, c.title,
+               (extract(epoch from c.updated_at))::bigint AS updatedAt,
                (SELECT m.content FROM messages m
                  WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS preview
         FROM conversations c

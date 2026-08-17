@@ -65,9 +65,13 @@ public class ChatController {
     }
 
     private String clientIp(HttpServletRequest http) {
-        String fwd = http.getHeader("X-Forwarded-For");
-        if (fwd != null && !fwd.isBlank()) {
-            return fwd.split(",")[0].trim();
+        // I1：默认不信任 XFF（可伪造，限流 key 形同虚设）；仅 trust-x-forwarded-for=true
+        // 且部署在可信代理之后时才取 XFF 首值，与 RecommendController 统一策略
+        if (properties.getRateLimit().isTrustXForwardedFor()) {
+            String fwd = http.getHeader("X-Forwarded-For");
+            if (fwd != null && !fwd.isBlank()) {
+                return fwd.split(",")[0].trim();
+            }
         }
         return http.getRemoteAddr();
     }

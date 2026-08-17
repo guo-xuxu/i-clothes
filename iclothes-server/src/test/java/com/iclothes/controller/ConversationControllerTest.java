@@ -46,13 +46,18 @@ class ConversationControllerTest {
         dto.setId(UUID.randomUUID().toString());
         dto.setTitle("新对话");
         dto.setMessages(List.of());
-        dto.setCreatedAt(LocalDateTime.of(2026, 1, 2, 3, 4, 5));
-        dto.setUpdatedAt(LocalDateTime.of(2026, 1, 3, 4, 5, 6));
+        // wire 契约为 epoch 秒数字（前端 ts*1000 显示）；按 systemDefault 换算使断言与运行环境时区无关
+        long createdEpoch = LocalDateTime.of(2026, 1, 2, 3, 4, 5)
+                .atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
+        long updatedEpoch = LocalDateTime.of(2026, 1, 3, 4, 5, 6)
+                .atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
+        dto.setCreatedAt(createdEpoch);
+        dto.setUpdatedAt(updatedEpoch);
         when(service.create()).thenReturn(dto);
         mvc.perform(post("/api/conversations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("新对话"))
-                .andExpect(jsonPath("$.created_at").value("2026-01-02T03:04:05"))
-                .andExpect(jsonPath("$.updated_at").value("2026-01-03T04:05:06"));
+                .andExpect(jsonPath("$.created_at").value(createdEpoch))
+                .andExpect(jsonPath("$.updated_at").value(updatedEpoch));
     }
 }

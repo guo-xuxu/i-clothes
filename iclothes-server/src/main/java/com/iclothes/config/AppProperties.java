@@ -41,8 +41,12 @@ public class AppProperties {
 
     public static class RateLimit {
         private int perMinute = 60;
+        /** 是否信任 X-Forwarded-For 首值作为客户端 IP（仅部署在可信反向代理之后时开启，默认 false 防伪造）。 */
+        private boolean trustXForwardedFor = false;
         public int getPerMinute() { return perMinute; }
         public void setPerMinute(int v) { perMinute = v; }
+        public boolean isTrustXForwardedFor() { return trustXForwardedFor; }
+        public void setTrustXForwardedFor(boolean v) { trustXForwardedFor = v; }
     }
 
     public static class Frontend {

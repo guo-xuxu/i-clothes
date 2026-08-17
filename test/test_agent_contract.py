@@ -116,3 +116,23 @@ def test_provider_api_error_returns_502(client, monkeypatch):
     resp = client.post("/api/agent/chat", json={"message": "你好", "images": [], "history": []})
     assert resp.status_code == 502
     assert "provider" in resp.json()["detail"]
+
+
+def test_non_llm_error_not_masked_as_502(monkeypatch):
+    """评审 I2 收窄：编码类异常（ValueError 等非 LLM 提供方）不再被 502 掩盖，
+    由 FastAPI 兜底为 500（raise_server_exceptions=False 下观测 wire 行为）。"""
+
+    class BoomModel:
+        async def ainvoke(self, messages):
+            raise ValueError("编码错误：结果缺键")
+
+    monkeypatch.setattr(ModelRepository, "get_deepseek", staticmethod(lambda: BoomModel()))
+    app = FastAPI()
+    app.include_router(agent.router)
+    resp = TestClient(app, raise_server_exceptions=False).post(
+        "/api/agent/chat", json={"message": "你好", "images": [], "history": []}
+    )
+    assert resp.status_code == 500
+    # FastAPI 兜底 500 不应泄露内部异常细节
+    assert "编码错误" not in resp.text
+

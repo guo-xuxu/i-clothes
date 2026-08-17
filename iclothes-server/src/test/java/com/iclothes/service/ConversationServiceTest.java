@@ -5,6 +5,7 @@ import java.sql.CallableStatement;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -20,6 +21,7 @@ import com.baomidou.mybatisplus.core.MybatisMapperBuilderAssistant;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.iclothes.dto.ConversationDto;
+import com.iclothes.entity.Conversation;
 import com.iclothes.entity.Message;
 import com.iclothes.repository.ConversationMapper;
 import com.iclothes.repository.MessageMapper;
@@ -61,6 +63,22 @@ class ConversationServiceTest {
         service.trim(id);
         org.mockito.Mockito.verify(messages, org.mockito.Mockito.never())
                 .delete(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void touchUpdatesUpdatedAt() {
+        // I3：追加消息后触达 updated_at（列表按更新时间倒序）——mock mapper 下验证 updateById 被调用且时间被刷新
+        UUID id = UUID.randomUUID();
+        LocalDateTime old = LocalDateTime.now().minusDays(1);
+        Conversation existing = new Conversation(id, "标题", old, old);
+        when(conversations.selectById(id)).thenReturn(existing);
+        ConversationService service = new ConversationService(conversations, messages);
+
+        service.touch(id);
+
+        ArgumentCaptor<Conversation> cap = ArgumentCaptor.forClass(Conversation.class);
+        verify(conversations).updateById(cap.capture());
+        assertThat(cap.getValue().getUpdatedAt()).isAfter(old);
     }
 
     @Test
