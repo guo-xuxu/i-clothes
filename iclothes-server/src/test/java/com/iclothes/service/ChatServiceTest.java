@@ -1,0 +1,107 @@
+// ChatServiceTest.java
+package com.iclothes.service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import com.iclothes.agent.AgentChatRequest;
+import com.iclothes.agent.AgentChatResponse;
+import com.iclothes.agent.PythonAgentClient;
+import com.iclothes.dto.ChatResponse;
+import com.iclothes.entity.Conversation;
+import com.iclothes.entity.Message;
+import com.iclothes.exception.ApiException;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ChatServiceTest {
+
+    @Mock ConversationService conversations;
+    @Mock PythonAgentClient agentClient;
+    @Mock SessionLock sessionLock;
+
+    ChatService service;
+    UUID cid = UUID.randomUUID();
+    String lockKey = "conversation:" + cid + ":lock";
+
+    @BeforeEach
+    void setUp() {
+        // 共享桩用 lenient：lockTimeoutThrows503AndSkipsAgent 中 tryAcquire 被重写、chat 按断言
+        // 必须永不调用，STRICT_STUBS 会误报 UnnecessaryStubbingException（Mockito 官方推荐做法）
+        lenient().when(sessionLock.tryAcquire(anyString(), eq(3000L))).thenReturn(true);
+        lenient().when(agentClient.chat(anyString(), anyList(), anyList()))
+                .thenReturn(new AgentChatResponse("回复", "chat"));
+        service = new ChatService(conversations, agentClient, sessionLock);
+    }
+
+    @Test
+    void chatOrchestratesLockAgentPersistAndRelease() {
+        when(conversations.getTitle(cid)).thenReturn("旧标题");
+
+        ChatResponse resp = service.chat(cid.toString(), "你好", List.of());
+
+        assertThat(resp.getReply()).isEqualTo("回复");
+        assertThat(resp.getIntent()).isEqualTo("chat");
+        verify(sessionLock).tryAcquire(lockKey, 3000);
+        verify(agentClient, times(1)).chat(eq("你好"), anyList(), anyList()); // 恰好一次 = 不重试
+        verify(conversations).appendUser(eq(cid), eq("你好"), anyList());
+        verify(conversations).appendAssistant(eq(cid), eq("回复"), eq("chat"));
+        verify(conversations).trim(cid);
+        verify(sessionLock).release(lockKey);
+    }
+
+    @Test
+    void newConversationGetsCreatedAndTitled() {
+        when(conversations.getTitle(any(UUID.class))).thenReturn("新对话");
+        when(conversations.create()).thenAnswer(inv -> {
+            ConversationDtoHelper.recordCreated(cid);
+            return null;
+        });
+
+        service.chat(null, "帮我推荐一条裙子", List.of());
+        // 无法直接断言 create 内部，改为断言标题落库路径
+        verify(conversations).setTitle(any(UUID.class), eq("帮我推荐一条裙子"));
+    }
+
+    @Test
+    void lockTimeoutThrows503AndSkipsAgent() {
+        when(sessionLock.tryAcquire(anyString(), eq(3000L))).thenReturn(false);
+
+        assertThatThrownBy(() -> service.chat(cid.toString(), "你好", List.of()))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatus()).isEqualTo(503));
+        verify(agentClient, never()).chat(anyString(), anyList(), anyList());
+    }
+
+    @Test
+    void agentFailurePropagatesWithoutRetry() {
+        when(agentClient.chat(anyString(), anyList(), anyList()))
+                .thenThrow(new com.iclothes.exception.AgentUnavailableException("AI 服务暂不可用，请稍后重试"));
+
+        assertThatThrownBy(() -> service.chat(cid.toString(), "你好", List.of()))
+                .isInstanceOf(com.iclothes.exception.AgentUnavailableException.class);
+        verify(agentClient, times(1)).chat(anyString(), anyList(), anyList()); // 不重试
+        verify(sessionLock).release(lockKey); // finally 释放锁
+    }
+
+    static final class ConversationDtoHelper {
+        static void recordCreated(UUID cid) {}
+    }
+}
