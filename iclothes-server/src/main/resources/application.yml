@@ -5,7 +5,7 @@ spring:
     virtual:
       enabled: true
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/iclothes}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/iclothes?stringtype=unspecified}
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD:iclothes123}
   flyway:

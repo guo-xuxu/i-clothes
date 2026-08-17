@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/iclothes_test
+    url: jdbc:postgresql://localhost:5432/iclothes_test?stringtype=unspecified
     username: postgres
     password: iclothes123
   flyway:
