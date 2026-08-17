@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Java 21 + Spring Boot `3.5.3`（parent POM）+ `spring.threads.virtual.enabled=true`；MyBatis-Plus `3.5.7`（`mybatis-plus-spring-boot3-starter`）；`spring-boot-starter-data-redis`（Lettuce，版本由 Boot BOM 管理）；`postgresql` 驱动 + `flyway-core` + `flyway-database-postgresql`（Boot BOM 管理）；`spring-boot-starter-test`
+- JDK 21 装于 `D:\language\java21`（微软 OpenJDK 21.0.7 首选 / Temurin 21.0.12 经 gh-proxy 备用，均实测可达）；现有 Microsoft OpenJDK 17 在 `D:\language\java` 保留不冲突，JAVA_HOME 必须指向 21。Spring Boot `3.5.3`（parent POM）+ `spring.threads.virtual.enabled=true`；MyBatis-Plus `3.5.7`（`mybatis-plus-spring-boot3-starter`）；`spring-boot-starter-data-redis`（Lettuce，版本由 Boot BOM 管理）；`postgresql` 驱动 + `flyway-core` + `flyway-database-postgresql`（Boot BOM 管理）；`spring-boot-starter-test`
 - PostgreSQL 16 本地：库 `iclothes`（应用）/ `iclothes_test`（测试），用户 `postgres`，密码 `iclothes123`
 - Redis 本地 `127.0.0.1:6379` 无密码（首选 Memurai Developer，winget id `Memurai.MemuraiDeveloper`；备用 tporadowski/redis zip）
 - 端口：Java `8080`、Python `8000`、PG `5432`、Redis `6379`
@@ -128,38 +128,58 @@ Run:
 ```powershell
 java -version; mvn -version; psql --version
 Get-NetTCPConnection -LocalPort 6379 -State Listen -ErrorAction SilentlyContinue
+echo "JAVA_HOME=$env:JAVA_HOME"
 ```
-Expected: `java`/`mvn`/`psql` 报"not recognized"，6379 无监听（本机均未装）。
+Expected: `java` 报"not recognized"（已实测：JDK 17 存在但位于 `D:\language\java` 且未配 PATH/JAVA_HOME）、`mvn`/`psql` 报"not recognized"、6379 无监听、JAVA_HOME 为空。本步只确认，不修改现有 JDK 17。
 
-- [ ] **Step 2: 安装 JDK 21（Temurin）与 Maven**
+- [ ] **Step 2: 下载并解压 JDK 21 到 D:\language\java21（首选：微软 OpenJDK 21.0.7，官方 CDN 已验证可达）**
 
 ```powershell
-winget install -e --id EclipseAdoptium.Temurin.21.JDK --silent --accept-package-agreements --accept-source-agreements
+$zip = "$env:TEMP\jdk21.zip"
+$dir = 'D:\language\java21'
+curl.exe -s -L -m 300 -o $zip "https://aka.ms/download-jdk/microsoft-jdk-21.0.7-windows-x64.zip"
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+Remove-Item "$env:TEMP\jdk21-ext" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive $zip "$env:TEMP\jdk21-ext" -Force
+$inner = Get-ChildItem "$env:TEMP\jdk21-ext" -Directory | Select-Object -First 1
+Copy-Item "$($inner.FullName)\*" $dir -Recurse -Force
+& "$dir\bin\java.exe" -version
+```
+Expected: `openjdk version "21.0.7" ...`。若 aka.ms 下载失败（网络变化），走备用源（Temurin 21.0.12 经 gh-proxy，已实测返回合法 ZIP）：
+
+```powershell
+curl.exe -s -L -m 300 -o $zip "https://gh-proxy.com/https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12_8.zip"
+# 解压与验证步骤同上
+```
+
+- [ ] **Step 3: 安装 Maven（winget）**
+
+```powershell
 winget install -e --id Apache.Maven --silent --accept-package-agreements --accept-source-agreements
 ```
+注意：Maven 依赖 JAVA_HOME（Step 4 配置后生效）。
 
-- [ ] **Step 3: 配置 JAVA_HOME 与 PATH（用户级环境变量）**
+- [ ] **Step 4: 配置 JAVA_HOME 与 PATH（用户级环境变量，指向 D:\language\java21）**
 
 ```powershell
-$jh = (Get-ChildItem 'C:\Program Files\Eclipse Adoptium' -Directory | Where-Object Name -like 'jdk-21*' | Select-Object -First 1).FullName
-[Environment]::SetEnvironmentVariable('JAVA_HOME', $jh, 'User')
+[Environment]::SetEnvironmentVariable('JAVA_HOME', 'D:\language\java21', 'User')
 $path = [Environment]::GetEnvironmentVariable('Path', 'User')
-[Environment]::SetEnvironmentVariable('Path', "$path;C:\Program Files\Apache\maven\bin;$jh\bin", 'User')
+[Environment]::SetEnvironmentVariable('Path', "$path;C:\Program Files\Apache\maven\bin;D:\language\java21\bin", 'User')
 ```
 
-- [ ] **Step 4: 验证工具链（新开终端）**
+- [ ] **Step 5: 验证工具链（新开终端）**
 
 Run: `java -version; mvn -version`
-Expected: `java 21.x` 与 `Apache Maven 3.9.x`。
+Expected: `java 21.x` 与 `Apache Maven 3.9.x`（原有 JDK 17 位于 `D:\language\java`，不在 PATH，互不冲突）。
 
-- [ ] **Step 5: 安装 PostgreSQL 16（静默，超级用户密码 iclothes123）**
+- [ ] **Step 6: 安装 PostgreSQL 16（静默，超级用户密码 iclothes123）**
 
 ```powershell
 winget install -e --id PostgreSQL.PostgreSQL.16 --silent --accept-package-agreements --accept-source-agreements --override "/quiet SUPERUSER_PASSWORD=iclothes123"
 ```
 注意：若安装器交互失败，改用官方 EDB 安装器手动完成（密码 `iclothes123`）。
 
-- [ ] **Step 6: 建库（应用库 + 测试库）并验证**
+- [ ] **Step 7: 建库（应用库 + 测试库）并验证**
 
 ```powershell
 $env:PGPASSWORD = 'iclothes123'
@@ -168,7 +188,7 @@ $env:PGPASSWORD = 'iclothes123'
 & 'C:\Program Files\PostgreSQL\16\bin\psql.exe' -U postgres -h localhost -c "SELECT version();"
 ```
 
-- [ ] **Step 7: 安装 Redis——方案 A：Memurai Developer（首选，Redis 7 兼容，已验证 winget 存在）**
+- [ ] **Step 8: 安装 Redis——方案 A：Memurai Developer（首选，Redis 7 兼容，已验证 winget 存在）**
 
 ```powershell
 winget install -e --id Memurai.MemuraiDeveloper --silent --accept-package-agreements --accept-source-agreements
@@ -178,7 +198,7 @@ Test-NetConnection 127.0.0.1 -Port 6379 | Select-Object TcpTestSucceeded
 ```
 Expected: `TcpTestSucceeded=True`。若 Memurai 安装失败，走方案 B。
 
-- [ ] **Step 8: 安装 Redis——方案 B（备用，tporadowski/redis，经 gh-proxy）**
+- [ ] **Step 9: 安装 Redis——方案 B（备用，tporadowski/redis，经 gh-proxy）**
 
 ```powershell
 $zip = "$env:TEMP\redis-win.zip"
@@ -192,7 +212,7 @@ Start-Sleep -Seconds 3
 ```
 Expected: 输出 `PONG`（方案 B 为 Redis 5.0.14，仅用到 SET NX EX/INCR/EXPIRE/DEL，兼容；优先使用方案 A）。
 
-- [ ] **Step 9: 导出对外契约存档（Python 后端仍可启动时）**
+- [ ] **Step 10: 导出对外契约存档（Python 后端仍可启动时）**
 
 ```powershell
 # 若 Python 后端可启动：uvicorn 起后执行
@@ -200,7 +220,7 @@ curl.exe -s http://127.0.0.1:8000/openapi.json -o docs/openapi-contract.json
 # 不可用则按 spec §3.1 的 7 个接口手写 JSON 契约（字段/类型/错误码必须与 spec 一致）
 ```
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add docs/openapi-contract.json
