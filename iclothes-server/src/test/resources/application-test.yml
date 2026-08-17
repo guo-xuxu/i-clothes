@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/iclothes_test
+    username: postgres
+    password: iclothes123
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+
+iclothes:
+  agent:
+    base-url: http://127.0.0.1:8000
