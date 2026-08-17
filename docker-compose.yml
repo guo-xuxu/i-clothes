@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: iclothes
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-iclothes123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  iclothes-python:
+    build: .
+    dockerfile: app/Dockerfile
+    environment:
+      QIANWEN_API_KEY: ${QIANWEN_API_KEY}
+      QIANWEN_BASE_URL: ${QIANWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      QIANWEN_MODEL: ${QIANWEN_MODEL:-qwen3.7-max-2026-06-08}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  iclothes-server:
+    build:
+      context: .
+      dockerfile: iclothes-server/Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/iclothes
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-iclothes123}
+      REDIS_HOST: redis
+      AGENT_BASE_URL: http://iclothes-python:8000
+      FRONTEND_DIST: dist
+      QIANWEN_API_KEY: ${QIANWEN_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      iclothes-python:
+        condition: service_healthy
+
+volumes:
+  pgdata:

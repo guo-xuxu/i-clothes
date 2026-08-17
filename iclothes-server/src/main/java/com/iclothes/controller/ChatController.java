@@ -1,6 +1,7 @@
 package com.iclothes.controller;
 
 import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -49,10 +50,11 @@ public class ChatController {
         }
         long maxBytes = properties.getUpload().getMaxSizeMb() * 1024L * 1024L;
         for (String url : list) {
-            if (!DATA_URL.matcher(url).find()) {
+            Matcher m = DATA_URL.matcher(url);
+            if (!m.find()) {
                 throw new ApiException(400, "不支持的图片格式，仅支持 JPG/PNG");
             }
-            int payloadLen = url.length() - DATA_URL.matcher(url).end();
+            int payloadLen = url.length() - m.end();
             long approxBytes = (long) (payloadLen * 3 / 4.0);
             if (approxBytes > maxBytes) {
                 throw new ApiException(400,
