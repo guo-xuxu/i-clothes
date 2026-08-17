@@ -90,10 +90,17 @@ class PythonAgentClientTest {
     @Test
     void chatWrapsConnectFailureAsUnavailable() {
         RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         PythonAgentClient client = client(builder, props());
+
+        // HTTP 层抛 I/O 异常（真实连接失败的等价物）→ client 侧包装为 ResourceAccessException → AgentUnavailableException。
+        // once() + verify()：钉死"不重试"——若 chat() 重试，请求次数会超过 1 次，verify() 失败。
+        server.expect(once(), requestTo("http://127.0.0.1:8000/api/agent/chat"))
+                .andRespond(withException(new java.net.ConnectException("connection refused")));
 
         assertThatThrownBy(() -> client.chat("你好", List.of(), List.of()))
                 .isInstanceOf(AgentUnavailableException.class);
+        server.verify();
     }
 
     /** Task 2 评审遗留：healthQianwenConfigured() 的"调用异常 → 返回 false"catch 分支（契约：Python 不可达仍 200+false 的唯一落点）。 */
