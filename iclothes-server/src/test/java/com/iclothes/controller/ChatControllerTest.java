@@ -12,10 +12,14 @@ import com.iclothes.exception.AgentValidationException;
 import com.iclothes.service.ChatService;
 import com.iclothes.service.RateLimiter;
 
+import java.util.List;
+
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -64,6 +68,33 @@ class ChatControllerTest {
                         .content("{\"message\":\"hi\",\"images\":" + images + "}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("最多上传 3 张照片"));
+    }
+
+    @Test
+    void validPngImageAccepted() throws Exception {
+        when(rateLimiter.allow(any())).thenReturn(true);
+        when(chatService.chat(any(), any(), anyList()))
+                .thenReturn(new ChatResponse("abc", "回复", "chat", "新对话"));
+        String url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        mvc.perform(post("/api/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"看看这张照片\",\"images\":[\"" + url + "\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversation_id").value("abc"))
+                .andExpect(jsonPath("$.reply").value("回复"));
+        verify(chatService).chat(any(), any(), argThat(images -> images.equals(List.of(url))));
+    }
+
+    @Test
+    void oversizedImageRejected() throws Exception {
+        when(rateLimiter.allow(any())).thenReturn(true);
+        // 7MB base64 载荷 ≈ 5.25MB 解码后字节数 > 5MB 限制（上限来自 AppProperties 默认 maxSizeMb=5）
+        String base64 = "A".repeat(7 * 1024 * 1024);
+        mvc.perform(post("/api/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"hi\",\"images\":[\"data:image/png;base64," + base64 + "\"]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("图片超过 5MB 限制"));
     }
 
     @Test

@@ -48,7 +48,7 @@ services:
       context: .
       dockerfile: iclothes-server/Dockerfile
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/iclothes
+      DB_URL: jdbc:postgresql://postgres:5432/iclothes?stringtype=unspecified
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-iclothes123}
       REDIS_HOST: redis
