@@ -33,3 +33,7 @@ logs/
 # 鎿嶄綔绯荤粺
 .DS_Store
 Thumbs.db
+
+# Java（Maven 构建产物）
+target/
+
