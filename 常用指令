@@ -1,24 +1,17 @@
 停掉后台phoenix
 Get-NetTCPConnection -LocalPort 6006,4317 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
 
-停掉后台app
-Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+停掉后台app（python agent / java / vite）
+Get-NetTCPConnection -LocalPort 8000,8080,5173 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
 
-停掉前端dev（vite）
-Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-
-前台启动phoenix
-cd D:\code\i-clothes
-D:\code\i-clothes\.conda\python.exe -m phoenix.server.main serve
-
-前台启动app
+启动 Python Agent 服务（:8000）
 cd D:\code\i-clothes
 D:\code\i-clothes\.conda\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-前端开发模式（Vite，自动代理 /api 到 8000，浏览器访问 http://127.0.0.1:5173）
+启动 Java 业务后端（:8080，需 PG + Redis 已运行）
+cd D:\code\i-clothes
+java -jar iclothes-server\target\iclothes-server-0.1.0.jar
+
+前端开发模式（Vite，代理 /api 到 8080）
 cd D:\code\i-clothes\frontend
 npm.cmd run dev
-
-前端生产构建（产物 frontend/dist，由 FastAPI 直接伺服，访问 http://127.0.0.1:8000）
-cd D:\code\i-clothes\frontend
-npm.cmd run build

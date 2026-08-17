@@ -52,6 +52,12 @@ async def agent_chat(payload: AgentChatRequest) -> AgentChatResponse:
         raise HTTPException(status_code=400, detail="消息内容不能为空")
     try:
         result = await run_chat(message, images, payload.history)
-    except RuntimeError as exc:
+    except HTTPException:
+        # 校验类异常保持原状（当前 run_chat 内部不抛，仅防御性保留）
+        raise
+    except Exception as exc:
+        # LLM/HTTP 提供方异常（openai APIError、httpx 超时/连接错误、
+        # API Key 未配置的 RuntimeError 等）统一 502 —— spec v2 §4.1
+        # 「LLM 未配置/调用失败 502 {"detail"}」；不重试（避免重复扣费）
         raise HTTPException(status_code=502, detail=str(exc))
     return AgentChatResponse(reply=result["reply"], intent=result["intent"])

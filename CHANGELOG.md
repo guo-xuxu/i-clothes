@@ -58,6 +58,20 @@
 - `app/services/qianwen.py`（逻辑迁移至 `app/graph/` 与 `app/providers.py`）
 - `app/providers.py`（逻辑迁移至 `app/repositories/model_repo.py`）
 
+### Changed
+- 架构重构为双服务：Java 业务后端（Spring Boot 3.5.3 + MyBatis-Plus + Redis，
+  会话 CRUD/并发锁/限流）+ Python 无状态 AI-Agent 服务（FastAPI + LangGraph）
+- 会话持久化：内存存储 → PostgreSQL（重启不丢）；新增 Redis 会话写锁与限流
+
+### Added
+- Python `/api/agent/chat` 无状态契约接口（Java 调用，不落库）
+- Java 7 端点（health/recommend/conversations CRUD/chat）逐字节兼容前端
+- Docker compose 四件套交付物（pg + redis + python + java）
+
+### Removed
+- Python `app/services/`（会话存储/编排）、`/api/chat`、`/api/recommend` 路由
+  （职责移交 Java；AI 推理逻辑完整保留）
+
 **变更原因**：完成 MVP 前 3 步（项目结构、后端、前端）。采用 LangGraph
 便于后续扩展 DeepSeek 识别/生图、季节/主题节点；模型调用集中封装，换模型只改一处。
 MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信息（SQL）、

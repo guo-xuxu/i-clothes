@@ -101,3 +101,18 @@ def test_missing_key_returns_502(client, monkeypatch):
     resp = client.post("/api/agent/chat", json={"message": "你好", "images": [], "history": []})
     assert resp.status_code == 502
     assert "未配置" in resp.json()["detail"]
+
+
+def test_provider_api_error_returns_502(client, monkeypatch):
+    """LLM 提供方异常（openai APIError，非 RuntimeError）→ 502 而非 500（spec §4.1）。"""
+
+    class FailingModel:
+        async def ainvoke(self, messages):
+            from openai import APIError
+
+            raise APIError("provider upstream returned an error", request=None, body=None)
+
+    monkeypatch.setattr(ModelRepository, "get_deepseek", staticmethod(lambda: FailingModel()))
+    resp = client.post("/api/agent/chat", json={"message": "你好", "images": [], "history": []})
+    assert resp.status_code == 502
+    assert "provider" in resp.json()["detail"]
