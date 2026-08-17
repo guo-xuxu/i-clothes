@@ -1,5 +1,10 @@
-"""FastAPI 应用入口：提供穿搭推荐接口和前端页面。"""
-import base64
+"""FastAPI 应用入口：组装应用、挂载路由与静态资源。
+
+分层说明：
+- 接口层（controller）在 app/api/routers/，main.py 只负责挂载。
+- 业务层在 app/services/，核心工作流在 app/graph/。
+- 数据访问层在 app/repositories/（模型、未来的 SQL/向量/知识图谱）。
+"""
 import os
 import socket
 import subprocess
@@ -7,15 +12,14 @@ import sys
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 # Phoenix tracing：官方 register() 自动配置 OTLP 导出并挂载 instrumentor
 from phoenix.otel import register
 
-from app.config import settings
-from app.graph.workflow import run_recommendation
+from app.api.routers import chat, health, recommend
 
 PHOENIX_UI_PORT = 6006
 PHOENIX_OTLP_PORT = 4317
@@ -74,64 +78,29 @@ print("[Phoenix] Tracing enabled. Make sure Phoenix server is running at http://
 
 app = FastAPI(title="i-clothes 智能穿搭助手", version="0.1.0")
 
-
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
+FRONTEND_DIST = FRONTEND_DIR / "dist"
+DIST_READY = (FRONTEND_DIST / "index.html").exists()
 
 
 @app.get("/")
 async def index() -> FileResponse:
-    """返回前端首页。"""
+    """返回前端首页（优先 Vue 构建产物，否则回退到旧静态页）。"""
+    if DIST_READY:
+        return FileResponse(FRONTEND_DIST / "index.html")
     return FileResponse(FRONTEND_DIR / "index.html")
 
 
-@app.get("/api/health")
-async def health() -> dict:
-    """健康检查，同时返回千问是否已配置。"""
-    return {"status": "ok", "qianwen_configured": bool(settings.QIANWEN_API_KEY)}
+# API 路由（接口层，见 app/api/routers/）
+app.include_router(recommend.router)
+app.include_router(health.router)
+app.include_router(chat.router)
 
-
-@app.post("/api/recommend")
-async def recommend(
-    images: list[UploadFile] = File(...),
-    description: str = Form(""),
-) -> dict:
-    """接收参考照片和文字说明，返回穿搭建议。"""
-    if not images:
-        raise HTTPException(status_code=400, detail="请至少上传一张照片")
-
-    if len(images) > settings.MAX_UPLOAD_COUNT:
-        raise HTTPException(
-            status_code=400,
-            detail=f"最多上传 {settings.MAX_UPLOAD_COUNT} 张照片",
-        )
-
-    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
-    image_urls: list[str] = []
-
-    for image in images:
-        if image.content_type not in settings.ALLOWED_CONTENT_TYPES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的图片格式：{image.content_type}，仅支持 JPG/PNG",
-            )
-        data = await image.read()
-        if len(data) > max_bytes:
-            raise HTTPException(
-                status_code=400,
-                detail=f"图片 {image.filename} 超过 {settings.MAX_UPLOAD_SIZE_MB}MB 限制",
-            )
-        b64 = base64.b64encode(data).decode("utf-8")
-        image_urls.append(f"data:{image.content_type};base64,{b64}")
-
-    try:
-        suggestion = await run_recommendation(image_urls, description)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
-
-    return {"suggestion": suggestion}
-
-
-# 静态资源（CSS/JS）
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+# 静态资源：Vue 构建产物（/assets）或旧版原生前端（/static）
+if DIST_READY:
+    app.mount(
+        "/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets"
+    )
+else:
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")

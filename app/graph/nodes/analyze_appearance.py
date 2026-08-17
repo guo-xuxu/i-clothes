@@ -2,7 +2,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.graph.state import OutfitState
-from app.providers import get_qianwen_vl
+from app.repositories.model_repo import ModelRepository
 
 APPEARANCE_PROMPT = """你是一名专业的形象分析师。用户会上传一张或多张人物照片。
 请仔细观察照片中的人物，客观描述其可见的身体特征，供后续穿搭推荐使用。
@@ -19,7 +19,7 @@ APPEARANCE_PROMPT = """你是一名专业的形象分析师。用户会上传一
 
 async def analyze_appearance(state: OutfitState) -> OutfitState:
     """分析照片中人物的体征数据（体型、脸型、腿型、肤色等）。"""
-    model = get_qianwen_vl()
+    model = ModelRepository.get_qianwen_vl()
 
     content: list[dict] = []
     for url in state["images"]:
