@@ -1,6 +1,8 @@
 spring:
   application:
     name: iclothes-server
+  jackson:
+    property-naming-strategy: SNAKE_CASE
   threads:
     virtual:
       enabled: true

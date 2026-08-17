@@ -7,13 +7,18 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import com.iclothes.dto.ChatResponse;
+import com.iclothes.exception.AgentUnavailableException;
+import com.iclothes.exception.AgentValidationException;
 import com.iclothes.service.ChatService;
 import com.iclothes.service.RateLimiter;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -80,7 +85,45 @@ class ChatControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"你好\",\"images\":[]}"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversation_id").value("abc"))
                 .andExpect(jsonPath("$.reply").value("回复"))
                 .andExpect(jsonPath("$.intent").value("chat"));
+    }
+
+    @Test
+    void agentValidationErrorReturns400WithDetail() throws Exception {
+        when(rateLimiter.allow(any())).thenReturn(true);
+        when(chatService.chat(any(), any(), anyList()))
+                .thenThrow(new AgentValidationException("校验失败"));
+        mvc.perform(post("/api/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"你好\",\"images\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("校验失败"));
+    }
+
+    @Test
+    void agentUnavailableReturns502WithDetail() throws Exception {
+        when(rateLimiter.allow(any())).thenReturn(true);
+        when(chatService.chat(any(), any(), anyList()))
+                .thenThrow(new AgentUnavailableException("AI 服务暂不可用，请稍后重试"));
+        mvc.perform(post("/api/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"你好\",\"images\":[]}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.detail").value("AI 服务暂不可用，请稍后重试"));
+    }
+
+    @Test
+    void unexpectedErrorReturns500WithoutStacktrace() throws Exception {
+        when(rateLimiter.allow(any())).thenReturn(true);
+        when(chatService.chat(any(), any(), anyList()))
+                .thenThrow(new RuntimeException("boom"));
+        mvc.perform(post("/api/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"你好\",\"images\":[]}"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.detail").value("服务器内部错误"))
+                .andExpect(content().string(not(containsString("Exception"))));
     }
 }
