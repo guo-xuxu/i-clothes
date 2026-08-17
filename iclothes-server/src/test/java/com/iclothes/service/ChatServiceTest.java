@@ -9,10 +9,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import com.iclothes.agent.AgentChatRequest;
 import com.iclothes.agent.AgentChatResponse;
 import com.iclothes.agent.PythonAgentClient;
 import com.iclothes.dto.ChatResponse;
+import com.iclothes.dto.ConversationDto;
 import com.iclothes.entity.Conversation;
 import com.iclothes.entity.Message;
 import com.iclothes.exception.ApiException;
@@ -36,6 +39,7 @@ class ChatServiceTest {
     @Mock ConversationService conversations;
     @Mock PythonAgentClient agentClient;
     @Mock SessionLock sessionLock;
+    @Mock PlatformTransactionManager txManager;
 
     ChatService service;
     UUID cid = UUID.randomUUID();
@@ -44,11 +48,16 @@ class ChatServiceTest {
     @BeforeEach
     void setUp() {
         // 共享桩用 lenient：lockTimeoutThrows503AndSkipsAgent 中 tryAcquire 被重写、chat 按断言
-        // 必须永不调用，STRICT_STUBS 会误报 UnnecessaryStubbingException（Mockito 官方推荐做法）
+        // 必须永不调用；newConversationGetsCreatedAndTitled 中 get(cid) 不触发（cid 为 null），
+        // STRICT_STUBS 会误报 UnnecessaryStubbingException（Mockito 官方推荐做法）
         lenient().when(sessionLock.tryAcquire(anyString(), eq(3000L))).thenReturn(true);
         lenient().when(agentClient.chat(anyString(), anyList(), anyList()))
                 .thenReturn(new AgentChatResponse("回复", "chat"));
-        service = new ChatService(conversations, agentClient, sessionLock);
+        lenient().when(conversations.get(cid)).thenReturn(new ConversationDto()); // 既有会话路径
+        // 真实 TransactionTemplate + mock 事务管理器：单测内无真实事务，但持久化四步仍走
+        // execute 回调（与生产路径一致）
+        service = new ChatService(conversations, agentClient, sessionLock,
+                new TransactionTemplate(txManager));
     }
 
     @Test
@@ -59,6 +68,7 @@ class ChatServiceTest {
 
         assertThat(resp.getReply()).isEqualTo("回复");
         assertThat(resp.getIntent()).isEqualTo("chat");
+        assertThat(resp.getConversationId()).isEqualTo(cid.toString());
         verify(sessionLock).tryAcquire(lockKey, 3000);
         verify(agentClient, times(1)).chat(eq("你好"), anyList(), anyList()); // 恰好一次 = 不重试
         verify(conversations).appendUser(eq(cid), eq("你好"), anyList());
@@ -69,14 +79,16 @@ class ChatServiceTest {
 
     @Test
     void newConversationGetsCreatedAndTitled() {
+        String createdId = UUID.randomUUID().toString();
+        ConversationDto created = new ConversationDto();
+        created.setId(createdId);
+        when(conversations.create()).thenReturn(created);
         when(conversations.getTitle(any(UUID.class))).thenReturn("新对话");
-        when(conversations.create()).thenAnswer(inv -> {
-            ConversationDtoHelper.recordCreated(cid);
-            return null;
-        });
 
-        service.chat(null, "帮我推荐一条裙子", List.of());
-        // 无法直接断言 create 内部，改为断言标题落库路径
+        ChatResponse resp = service.chat(null, "帮我推荐一条裙子", List.of());
+
+        // 修复 #1：响应 conversationId 必须等于 create() 落库返回的 id（而非 ChatService 自造）
+        assertThat(resp.getConversationId()).isEqualTo(createdId);
         verify(conversations).setTitle(any(UUID.class), eq("帮我推荐一条裙子"));
     }
 
@@ -99,9 +111,5 @@ class ChatServiceTest {
                 .isInstanceOf(com.iclothes.exception.AgentUnavailableException.class);
         verify(agentClient, times(1)).chat(anyString(), anyList(), anyList()); // 不重试
         verify(sessionLock).release(lockKey); // finally 释放锁
-    }
-
-    static final class ConversationDtoHelper {
-        static void recordCreated(UUID cid) {}
     }
 }

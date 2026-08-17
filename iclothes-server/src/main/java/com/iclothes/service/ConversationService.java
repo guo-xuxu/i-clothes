@@ -1,6 +1,7 @@
 package com.iclothes.service;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -51,10 +52,13 @@ public class ConversationService {
     }
 
     public List<Message> lastMessages(UUID id, int limit) {
-        return messages.selectList(new LambdaQueryWrapper<Message>()
+        // 取"最近 limit 条"（DESC + LIMIT 拿到最新窗口），再 reverse 恢复升序交给下游
+        List<Message> msgs = messages.selectList(new LambdaQueryWrapper<Message>()
                 .eq(Message::getConversationId, id)
-                .orderByAsc(Message::getId)
+                .orderByDesc(Message::getId)
                 .last("LIMIT " + limit));
+        Collections.reverse(msgs);
+        return msgs;
     }
 
     public void appendUser(UUID id, String content, List<String> images) {
