@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: iclothes-server
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/iclothes?stringtype=unspecified}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:iclothes123}
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 40MB
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+
+iclothes:
+  agent:
+    base-url: ${AGENT_BASE_URL:http://127.0.0.1:8000}
+  upload:
+    max-count: 3
+    max-size-mb: 5
+  rate-limit:
+    per-minute: 60
+    # 仅部署在可信反向代理之后时设为 true，否则 X-Forwarded-For 可被客户端伪造绕过限流
+    trust-x-forwarded-for: false
+  frontend:
+    dir: ${FRONTEND_DIST:frontend/dist}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true

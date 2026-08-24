@@ -1,0 +1,17 @@
+停掉后台phoenix
+Get-NetTCPConnection -LocalPort 6006,4317 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+
+停掉后台app（python agent / java / vite）
+Get-NetTCPConnection -LocalPort 8000,8080,5173 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+
+启动 Python Agent 服务（:8000）
+cd D:\code\i-clothes
+D:\code\i-clothes\.conda\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+启动 Java 业务后端（:8080，需 PG + Redis 已运行）
+cd D:\code\i-clothes
+java -jar iclothes-server\target\iclothes-server-0.1.0.jar
+
+前端开发模式（Vite，代理 /api 到 8080）
+cd D:\code\i-clothes\frontend
+npm.cmd run dev

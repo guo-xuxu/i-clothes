@@ -123,11 +123,11 @@ async def main():
     print()
 
     # 运行测试
-    # await test_single_image()
+    await test_single_image()
 
     # 如果第一个测试通过，继续运行其他测试
     # await test_multiple_images()
-    await test_no_description()
+    # await test_no_description()
 
     print("\n" + "=" * 60)
     print("所有测试完成!")
