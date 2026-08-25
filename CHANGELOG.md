@@ -72,6 +72,22 @@
 - Python `app/services/`（会话存储/编排）、`/api/chat`、`/api/recommend` 路由
   （职责移交 Java；AI 推理逻辑完整保留）
 
+### Added
+- 知识子系统 `app/knowledge/`：穿搭知识的知识图谱构建与混合检索（RAG）骨架，
+  规划见 `docs/RAG知识图谱规划.md`
+- 知识文档读取器 `app/knowledge/build/document_reader.py`：递归扫描 `docs/`
+  下 `.md`/`.txt`，按子目录推断 9 大知识维度（廓形/身材/面料/风格/图案/配饰/场合/颜色/肤色），
+  输出统一 `Document` 结构
+- 内置知识文档目录 `app/knowledge/docs/`：9 维度子目录 + `README.md`（维度约定
+  与 RAG 写作要求），首个样例文档 `silhouette/穿搭公式.md`
+- 落盘目录 `app/knowledge/data/`（图谱 `graph.json` / 历史快照 / 切块中间产物）
+- 检索骨架 `app/knowledge/retrieve/`：`graph_store.py`（networkx 图加载/序列化）、
+  `vector_store.py`（PG `knowledge_chunks` 余弦检索）、`retriever.py`（图遍历 + 向量混合召回）
+- `ModelRepository.get_deepseek_extractor()`：知识图谱三元组抽取专用模型
+  （temperature=0 + 长超时，用于结构化、确定性抽取）
+- `docs/RAG知识图谱规划.md`：图谱 + 向量混合 RAG 实施规划（上传接口契约、
+  离线建图流水线、在线召回节点、PG 数据模型、里程碑 M0-M3）
+
 **变更原因**：完成 MVP 前 3 步（项目结构、后端、前端）。采用 LangGraph
 便于后续扩展 DeepSeek 识别/生图、季节/主题节点；模型调用集中封装，换模型只改一处。
 MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信息（SQL）、
@@ -92,6 +108,11 @@ MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信�
 - `app/graph/{state,workflow}.py`（更新）
 - `frontend/`（重构为 Vite + Vue3 项目：package.json、vite.config.js、
   `src/{main.js,style.css,api.js,App.vue}`、`src/components/*.vue`）
+- `app/knowledge/`（新建：`__init__.py`、`build/{__init__,document_reader,text_chunk}.py`、
+  `retrieve/{__init__,graph_store,vector_store,retriever}.py`、
+  `docs/`（9 维度子目录 + `README.md` + `silhouette/穿搭公式.md`）、`data/README.md`）
+- `app/repositories/model_repo.py`（新增 `get_deepseek_extractor()`）
+- `docs/RAG知识图谱规划.md`（新建）
 
 ---
 
@@ -135,4 +156,4 @@ MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信�
 ---
 
 **文档维护**：每次代码提交前更新此文档  
-**最后更新**：2026-08-11
+**最后更新**：2026-08-25

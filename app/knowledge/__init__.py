@@ -9,6 +9,6 @@
 子目录：
 - docs/      内置穿搭知识文档（色彩/场合/体型/风格/面料）
 - data/      构建产物落盘（graph.json、历史快照等）
-- build/     离线建图流程（graph_builder / vector_builder / import_docs）
+- build/     离线建图流程（document_reader / text_chunk / extract / document_processor / import_docs）
 - retrieve/  在线检索流程（graph_store / vector_store / retriever）
 """

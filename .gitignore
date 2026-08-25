@@ -7,7 +7,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
+
 dist/
 *.egg-info/
 .pytest_cache/
@@ -34,6 +34,6 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Java£¨Maven ¹¹½¨²úÎï£©
+# Javaï¿½ï¿½Maven ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï£©
 target/
 
