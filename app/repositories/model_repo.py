@@ -51,3 +51,27 @@ class ModelRepository(Repository):
             temperature=0.7,
             timeout=60,
         )
+
+    @staticmethod
+    @lru_cache(maxsize=1)
+    def get_deepseek_extractor() -> ChatOpenAI:
+        """返回知识图谱三元组抽取专用模型（低温度 + JSON 输出）。
+
+        与 get_deepseek 的区别：
+        - temperature=0：抽取是结构化任务，需要确定性输出，避免发散；
+        - timeout 更长：离线批量抽取可能耗时较久；
+        - 建议配合 prompt 要求输出 JSON，或由调用方传 response_format。
+
+        Raises:
+            RuntimeError: API Key 未配置。
+        """
+        if not settings.DEEPSEEK_API_KEY:
+            raise RuntimeError("DEEPSEEK_API_KEY 未配置")
+
+        return ChatOpenAI(
+            model=settings.DEEPSEEK_MODEL,
+            api_key=settings.DEEPSEEK_API_KEY,
+            base_url=settings.DEEPSEEK_BASE_URL,
+            temperature=0,
+            timeout=120,
+        )
