@@ -31,18 +31,18 @@ logger = logging.getLogger(__name__)
 class Entity(BaseModel):
     """一个知识实体。"""
 
-    name: str = Field(description="实体名称，保持原文")
-    type: str = Field(description="实体类型，根据文本内容归纳")
+    name: str = Field(description="实体名称，简洁规范，只保留核心名词短语，不加修饰语")
+    type: str = Field(description="实体类型，概括本质类别，如穿搭法则/服装单品/身材类型/搭配原则")
     description: str = Field(description="对实体属性和活动的全面描述")
 
 
 class Relationship(BaseModel):
     """一对相关实体之间的有向关系。"""
 
-    source: str = Field(description="源实体名称（须为已识别实体）")
-    target: str = Field(description="目标实体名称（须为已识别实体）")
+    source: str = Field(description="源实体名称（须为已识别实体的规范名）")
+    target: str = Field(description="目标实体名称（须为已识别实体的规范名）")
     description: str = Field(description="解释为何两者相关")
-    keywords: list[str] = Field(description="概括关系性质的高级关键字")
+    keywords: list[str] = Field(description="概括关系性质的1-3个关键字，只描述关系性质，不含实体属性词")
     strength: int = Field(description="关系强度分数，1-10", ge=1, le=10)
 
 
@@ -55,12 +55,48 @@ class ExtractionSchema(BaseModel):
 
 
 # 联合抽取提示词。
-_EXTRACT_PROMPT = """你是一个穿搭知识抽取器。请从下面的文本中识别所有实体以及实体之间的所有关系。
+_EXTRACT_PROMPT = """你是一个穿搭知识抽取器。请从下面的文本中识别所有实体以及实体之间的所有关系，用于构建穿搭知识图谱。
 
-- 步骤 -
-1. 识别所有实体。每个实体包含：name（实体名称，保持原文）、type（实体类型，根据文本内容归纳）、description（对实体属性和活动的全面描述）。
-2. 从已识别实体中，识别彼此明显相关的所有对。每个关系包含：source（源实体名称，必须是上面已识别的实体）、target（目标实体名称，必须是上面已识别的实体）、description（解释为何两者相关）、keywords（一个或多个概括关系性质的高级关键字）、strength（关系强度分数，1-10 的整数）。
-3. 识别概括整篇文章主要概念、主题的高级关键字，存入 content_keywords。
+- 实体提取规则 -
+1. 识别所有实体。每个实体包含：name（实体名称）、type（实体类型）、description（对实体属性和活动的全面描述）。
+2. 实体命名要求：
+   - name 必须简洁、规范，只保留核心名词短语，不要堆砌形容词修饰语（如「风衣」而非「帅气挺括的风衣」）。
+   - 不要把一句完整的话或长规则当作实体，应拆解为独立的概念（如「三层搭配原则」是实体，而「内层最薄、外层最瘦」应作为该实体的描述或单独概念）。
+   - 同一概念的不同说法合并为同一个实体，避免「风衣」「帅气显瘦的风衣」并存。
+3. type 应概括实体的本质类别（如「穿搭法则」「服装单品」「身材类型」「搭配原则」），不要用「错误搭配」这类评价性标签。
+4. 实体粒度细分：当一个大类概念在不同语境下有不同表现时，应抽取「带限定条件的子实体」作为关系节点，而不是用泛化大类直接相连。例如原文说「颜色相近导致单调」，应抽取「色彩相近」作为实体（而非笼统的「色彩」），因为「色彩」本身不会导致单调，只有「色彩相近」这个具体状态才会。
+
+- 关系提取规则 -
+4. 从已识别实体中，识别彼此明显相关的所有对。每个关系包含：source（源实体名称）、target（目标实体名称）、description（解释为何两者相关）、keywords（概括关系性质的 1-3 个高级关键字）、strength（关系强度分数，1-10 的整数）。
+5. keywords 只能描述「两者之间的关系的性质」（如「搭配」「适合」「对比」「违背」「包含」），不要放入实体自身的属性词（如「内层」「外窄」「第二层」这类描述单个实体的词）。
+6. 同一对实体之间只保留一条最关键的关系，不要把同一关系拆成多条（如「对比」和「相对」属于同一关系，只保留一条）。
+
+- 内容级关键词 -
+7. 识别概括整篇文章主要概念、主题的高级关键字，存入 content_keywords（控制在 10 个以内，只保留最具代表性的）。
+
+- 示例（学习以下抽取的颗粒度、命名规范与关系表达方式）-
+示例输入文本：
+"上松下紧是最经典的穿搭公式，适合梨形身材和苹果型身材的人。具体搭配时，上半身选择宽松的衬衫，下半身搭配紧身的小脚裤，既能修饰腿型，又显瘦。如果上下都宽松，就会违背松紧结合的原则，显得臃肿。"
+
+示例输出：
+{{
+  "entities": [
+    {{"name": "上松下紧", "type": "穿搭公式", "description": "上半身宽松、下半身紧身的经典穿搭公式"}},
+    {{"name": "梨形身材", "type": "身材类型", "description": "下半身较丰满的身材类型"}},
+    {{"name": "苹果型身材", "type": "身材类型", "description": "上半身较丰满的身材类型"}},
+    {{"name": "衬衫", "type": "服装单品", "description": "上半身常穿的宽松上衣"}},
+    {{"name": "小脚裤", "type": "服装单品", "description": "紧身修腿型的长裤"}},
+    {{"name": "松紧结合", "type": "搭配原则", "description": "宽松与紧身单品搭配的原则"}}
+  ],
+  "relationships": [
+    {{"source": "上松下紧", "target": "梨形身材", "description": "该公式能修饰下半身偏丰满的体型", "keywords": ["适合"], "strength": 9}},
+    {{"source": "上松下紧", "target": "苹果型身材", "description": "该公式同样适用于上半身偏丰满的体型", "keywords": ["适合"], "strength": 9}},
+    {{"source": "上松下紧", "target": "衬衫", "description": "该公式中上半身应选宽松衬衫", "keywords": ["搭配"], "strength": 8}},
+    {{"source": "上松下紧", "target": "小脚裤", "description": "该公式中下半身应搭配紧身小脚裤", "keywords": ["搭配"], "strength": 8}},
+    {{"source": "上松下紧", "target": "松紧结合", "description": "该公式是松紧结合原则的体现", "keywords": ["体现"], "strength": 7}}
+  ],
+  "content_keywords": ["上松下紧", "松紧结合", "显瘦", "修饰腿型"]
+}}
 
 文本：
 {text}
