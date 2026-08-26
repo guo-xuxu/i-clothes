@@ -26,14 +26,15 @@ from app.knowledge.config import DOCS_DIR
 RESULT_FILE = Path(__file__).parent / "extract_result.txt"
 
 
-def main() -> None:
+def main():
     lines: list[str] = []
     sep = "=" * 60
 
     lines.append(sep)
+    print("最小化测试：分词 + graph_extractor 联合抽取")
     lines.append("最小化测试：分词 + graph_extractor 联合抽取")
     lines.append(sep)
-
+    print("定位")
     # 1. 定位一篇真实知识文档
     reader = DocumentReader(DOCS_DIR)
     docs = reader.scan()
@@ -43,7 +44,7 @@ def main() -> None:
         return
     doc = docs[0]
     lines.append(f"\n[文档] {doc.title}（维度: {doc.dimension_name}）")
-
+    print("分词")
     # 2. 分词，取第一个 chunk
     chunker = TextChunker()
     chunks = list(chunker.iter_chunks(doc))
@@ -59,20 +60,24 @@ def main() -> None:
 
     # 3. 联合抽取（真实调用 DeepSeek，同步）
     extractor = GraphExtractor()
+    print("[抽取] 正在调用 DeepSeek 提取实体与三元组 ...\n")
     lines.append("\n[抽取] 正在调用 DeepSeek 提取实体与三元组 ...\n")
     result = extractor.extract_sync(chunk)
 
     # 4. 输出结果
     lines.append(sep)
+    print("提取结果:")
     lines.append("提取结果")
     lines.append(sep)
-
+    print(f"\n--- 实体（{len(result.entities)} 个）---")
     lines.append(f"\n--- 实体（{len(result.entities)} 个）---")
     for e in result.entities:
+        print(f"  · {e['name']}  [{e['type']}]  {e['description']}")
         lines.append(f"  · {e['name']}  [{e['type']}]  {e['description']}")
-
+    print(f"\n--- 关系 / 三元组（{len(result.relationships)} 条）---")
     lines.append(f"\n--- 关系 / 三元组（{len(result.relationships)} 条）---")
     for r in result.relationships:
+        print(f"  · {r['source']} --({', '.join(r['keywords'])})--> {r['target']}  [强度 {r['strength']}]")
         lines.append(
             f"  · {r['source']} --({', '.join(r['keywords'])})--> {r['target']}"
             f"  [强度 {r['strength']}]"

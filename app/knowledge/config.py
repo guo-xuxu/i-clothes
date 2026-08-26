@@ -40,11 +40,3 @@ DATA_DIR = KNOWLEDGE_DIR / "data"
 GRAPH_PATH = DATA_DIR / "graph" / "graph.json"
 # 切块中间产物目录（每篇文档的 chunk + 三元组 JSON 落盘于此）。
 CHUNKS_DIR = DATA_DIR / "chunks"
-
-# ---------------------------------------------------------------------------
-# 抽取（build/extract/graph_extractor.py）
-# ---------------------------------------------------------------------------
-# 抽取输出分隔符（GraphRAG 风格协议，选取不易与正文冲突的字符）。
-TUPLE_DELIMITER = "<|>"
-RECORD_DELIMITER = "##"
-COMPLETION_DELIMITER = "<|COMPLETE|>"

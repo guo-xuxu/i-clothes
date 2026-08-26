@@ -8,6 +8,7 @@ langchain-core==0.3.28
 langchain-openai==0.2.14
 langchain-text-splitters==0.3.2
 networkx==3.3
-openai==1.61.0
+openai>=1.61.0
 httpx==0.28.1
 arize-phoenix-otel==0.7.1
+agno

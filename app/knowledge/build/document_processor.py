@@ -98,6 +98,16 @@ class DocumentProcessor:
             ChunkWithTriples（含三元组、实体、关键词；失败时均为空）。
         """
         result = await self._extractor.extract(chunk)
+        return self._build_chunk_result(chunk, result)
+
+    def _extract_chunk_sync(self, chunk: TextChunk) -> ChunkWithTriples:
+        """同步版：对单个 chunk 执行联合抽取。"""
+        result = self._extractor.extract_sync(chunk)
+        return self._build_chunk_result(chunk, result)
+
+    @staticmethod
+    def _build_chunk_result(chunk: TextChunk, result) -> ChunkWithTriples:
+        """将抽取结果组装为 ChunkWithTriples。"""
         return ChunkWithTriples(
             chunk=chunk,
             triples=result.triples,
@@ -140,5 +150,28 @@ class DocumentProcessor:
             results = await asyncio.gather(*(_extract_one(c) for c in chunks))
             # gather 保序，直接按顺序装入
             result.chunks.extend(results)
+
+        return result
+
+    def process_sync(self, doc: Document) -> ProcessedDocument:
+        """同步版：处理单篇文档（切块 → 逐块联合抽取 → 组装结果）。
+
+        供脚本/受限环境使用，逐块串行抽取。
+
+        Args:
+            doc: 待处理的 Document。
+
+        Returns:
+            ProcessedDocument（含各 chunk 及其三元组、实体、关键词）。
+        """
+        result = ProcessedDocument(
+            source=str(doc.path),
+            title=doc.title,
+            dimension=doc.dimension,
+            dimension_name=doc.dimension_name,
+        )
+
+        for chunk in self._chunker.iter_chunks(doc):
+            result.chunks.append(self._extract_chunk_sync(chunk))
 
         return result
