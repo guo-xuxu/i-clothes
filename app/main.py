@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 # Phoenix tracing：官方 register() 自动配置 OTLP 导出并挂载 instrumentor
 from phoenix.otel import register
 
-from app.api.routers import agent, health
+from app.api.routers import agent, health, knowledge
 
 PHOENIX_UI_PORT = 6006
 PHOENIX_OTLP_PORT = 4317
@@ -95,6 +95,7 @@ async def index() -> FileResponse:
 # API 路由（接口层，见 app/api/routers/）
 app.include_router(agent.router)
 app.include_router(health.router)
+app.include_router(knowledge.router)
 
 # 静态资源：Vue 构建产物（/assets）或旧版原生前端（/static）
 if DIST_READY:
