@@ -1,28 +1,24 @@
 """穿搭推荐工作流的图定义与编译。
 
-流程：START → intent_router（意图路由）
-  - recommend + 有图：analyze_appearance → recommend_outfit
-  - recommend + 无图：recommend_outfit（纯文字推荐，跳过体征分析）
-  - chat：chat_reply（多轮闲聊）
+流程：START → query_analyzer（意图/维度/照片类型/信息提取）
+  - recommend（outfit/match/style/color）→ recommend_outfit
+  - chat → chat_reply
 """
 from functools import lru_cache
 
 from langgraph.graph import END, START, StateGraph
 
 from app.graph.nodes import (
-    analyze_appearance,
     chat_reply,
-    intent_router,
+    query_analyzer,
     recommend_outfit,
 )
 from app.graph.state import OutfitState
 
 
 def _route_by_intent(state: OutfitState) -> str:
-    """根据意图路由结果选择分支。"""
-    if state.get("intent") == "recommend":
-        return "recommend_with_images" if state.get("images") else "recommend_no_images"
-    return "chat"
+    """根据映射后的意图选择分支（对外契约 recommend|chat）。"""
+    return "recommend" if state.get("intent") == "recommend" else "chat"
 
 
 @lru_cache(maxsize=1)
@@ -30,22 +26,19 @@ def get_workflow():
     """构建并编译穿搭推荐工作流图。"""
     graph = StateGraph(OutfitState)
 
-    graph.add_node("intent_router", intent_router)
-    graph.add_node("analyze_appearance", analyze_appearance)
+    graph.add_node("query_analyzer", query_analyzer)
     graph.add_node("recommend_outfit", recommend_outfit)
     graph.add_node("chat_reply", chat_reply)
 
-    graph.add_edge(START, "intent_router")
+    graph.add_edge(START, "query_analyzer")
     graph.add_conditional_edges(
-        "intent_router",
+        "query_analyzer",
         _route_by_intent,
         {
-            "recommend_with_images": "analyze_appearance",
-            "recommend_no_images": "recommend_outfit",
+            "recommend": "recommend_outfit",
             "chat": "chat_reply",
         },
     )
-    graph.add_edge("analyze_appearance", "recommend_outfit")
     graph.add_edge("recommend_outfit", END)
     graph.add_edge("chat_reply", END)
 

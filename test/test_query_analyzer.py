@@ -1,12 +1,28 @@
-"""意图分析单测：无图关键词路由（意图 5 类 + 维度，纯函数，不触网）。"""
+"""意图分析单测：关键词路由（意图 5 类 + 维度）+ 多模态解析（fail-open）+ 节点行为。"""
+import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.graph.nodes.query_analyzer import analyze_text  # noqa: E402
+from app.graph.nodes.query_analyzer import (  # noqa: E402
+    AnalysisInfo,
+    analyze_text,
+    analyze_with_image,
+    format_info,
+    parse_analysis,
+    query_analyzer,
+)
+from app.repositories.model_repo import ModelRepository  # noqa: E402
 
+
+# ---------------------------------------------------------------------------
+# 无图关键词路由
+# ---------------------------------------------------------------------------
 
 def test_outfit_intent_with_occasion_dimension():
     a = analyze_text("帮我推荐上班通勤的穿搭")
@@ -57,21 +73,13 @@ def test_empty_message_chat_general():
 
 
 # ---------------------------------------------------------------------------
-# 多模态分析：JSON 解析（合法/围栏/非法/异常 → fail-open）与节点行为
+# 多模态 JSON 解析（合法/围栏/非法/异常 → fail-open）
 # ---------------------------------------------------------------------------
-import asyncio  # noqa: E402
-from types import SimpleNamespace  # noqa: E402
-
-import pytest  # noqa: E402
-
-from app.graph.nodes import query_analyzer as qa  # noqa: E402
-from app.repositories.model_repo import ModelRepository  # noqa: E402
-
 
 def test_parse_valid_json():
     raw = ('{"intent": "style", "dimension": "风格定位", "photo_type": "half_body", '
            '"info": {"skin_tone": "暖皮"}}')
-    a = qa.parse_analysis(raw)
+    a = parse_analysis(raw)
     assert a.intent == "style"
     assert a.dimension == "风格定位"
     assert a.photo_type == "half_body"
@@ -82,39 +90,39 @@ def test_parse_valid_json():
 def test_parse_fenced_json():
     raw = ('```json\n{"intent": "outfit", "dimension": "场合与季节", '
            '"photo_type": "full_body", "info": {}}\n```')
-    a = qa.parse_analysis(raw)
+    a = parse_analysis(raw)
     assert a.intent == "outfit"
     assert a.dimension == "场合与季节"
 
 
 def test_parse_invalid_returns_defaults():
-    a = qa.parse_analysis("这不是 JSON")
+    a = parse_analysis("这不是 JSON")
     assert a.intent == "chat"
     assert a.dimension == "general"
     assert a.photo_type == "unknown"
 
 
 def test_parse_empty_returns_defaults():
-    a = qa.parse_analysis("")
+    a = parse_analysis("")
     assert a.intent == "chat"
     assert a.dimension == "general"
 
 
 def test_parse_bad_intent_value_falls_back():
-    a = qa.parse_analysis('{"intent": "shopping", "dimension": "颜色搭配", "photo_type": "unknown", "info": {}}')
+    a = parse_analysis('{"intent": "shopping", "dimension": "颜色搭配", "photo_type": "unknown", "info": {}}')
     assert a.intent == "chat"
 
 
 def test_format_info_joins_nonempty():
-    info = qa.AnalysisInfo(body_shape="匀称", skin_tone="暖皮")
-    text = qa.format_info(info)
+    info = AnalysisInfo(body_shape="匀称", skin_tone="暖皮")
+    text = format_info(info)
     assert "体型：匀称" in text
     assert "肤色：暖皮" in text
     assert "脸型" not in text
 
 
 def test_format_info_empty():
-    assert qa.format_info(qa.AnalysisInfo()) == ""
+    assert format_info(AnalysisInfo()) == ""
 
 
 def test_analyze_with_image_parses_model_output(monkeypatch):
@@ -126,7 +134,7 @@ def test_analyze_with_image_parses_model_output(monkeypatch):
 
     monkeypatch.setattr(ModelRepository, "get_qianwen_vl", staticmethod(lambda: FakeVl()))
 
-    a = asyncio.run(qa.analyze_with_image(["data:image/png;base64,AAAA"], "我适合什么颜色"))
+    a = asyncio.run(analyze_with_image(["data:image/png;base64,AAAA"], "我适合什么颜色"))
     assert a.intent == "color"
     assert a.dimension == "肤色与个人色彩"
     assert a.photo_type == "head_shot"
@@ -140,10 +148,14 @@ def test_analyze_with_image_fails_open(monkeypatch):
 
     monkeypatch.setattr(ModelRepository, "get_qianwen_vl", staticmethod(lambda: BoomVl()))
 
-    a = asyncio.run(qa.analyze_with_image(["data:image/png;base64,AAAA"], "随便"))
+    a = asyncio.run(analyze_with_image(["data:image/png;base64,AAAA"], "随便"))
     assert a.intent == "chat"
     assert a.dimension == "general"
 
+
+# ---------------------------------------------------------------------------
+# 节点行为
+# ---------------------------------------------------------------------------
 
 def test_query_analyzer_node_maps_intent(monkeypatch):
     class FakeVl:
@@ -154,7 +166,7 @@ def test_query_analyzer_node_maps_intent(monkeypatch):
 
     monkeypatch.setattr(ModelRepository, "get_qianwen_vl", staticmethod(lambda: FakeVl()))
 
-    out = asyncio.run(qa.query_analyzer(
+    out = asyncio.run(query_analyzer(
         {"images": ["data:image/png;base64,AAAA"], "description": "帮我看看"}))
     assert out["intent"] == "recommend"
     assert out["intent_detail"] == "outfit"
@@ -171,14 +183,14 @@ def test_query_analyzer_node_chat_with_image(monkeypatch):
 
     monkeypatch.setattr(ModelRepository, "get_qianwen_vl", staticmethod(lambda: FakeVl()))
 
-    out = asyncio.run(qa.query_analyzer(
+    out = asyncio.run(query_analyzer(
         {"images": ["data:image/png;base64,AAAA"], "description": "这张图好看吗"}))
     assert out["intent"] == "chat"
     assert out["intent_detail"] == "chat"
 
 
 def test_query_analyzer_node_no_image_uses_keywords():
-    out = asyncio.run(qa.query_analyzer({"images": [], "description": "我适合什么风格"}))
+    out = asyncio.run(query_analyzer({"images": [], "description": "我适合什么风格"}))
     assert out["intent"] == "recommend"
     assert out["intent_detail"] == "style"
     assert out["dimension"] == "风格定位"

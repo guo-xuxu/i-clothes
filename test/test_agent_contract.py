@@ -26,9 +26,10 @@ class FakeModel:
 
 @pytest.fixture
 def client(monkeypatch):
-    # 意图路由为关键词规则，chat 意图走 deepseek，recommend 走 qianwen + deepseek
+    # query_analyzer：无图走关键词规则，有图走千问多模态（fake 返回合法分析 JSON）
     monkeypatch.setattr(ModelRepository, "get_deepseek", staticmethod(lambda: FakeModel("助手回复")))
-    monkeypatch.setattr(ModelRepository, "get_qianwen_vl", staticmethod(lambda: FakeModel("体征分析")))
+    monkeypatch.setattr(ModelRepository, "get_qianwen_vl", staticmethod(
+        lambda: FakeModel('{"intent": "outfit", "dimension": "场合与季节", "photo_type": "full_body", "info": {}}')))
     app = FastAPI()
     app.include_router(agent.router)
     return TestClient(app)
@@ -57,6 +58,7 @@ def test_recommend_intent_without_images(client):
 
 
 def test_images_force_recommend(client):
+    # 有图走多模态判定：fixture 的 fake 千问返回 outfit → recommend
     resp = client.post("/api/agent/chat", json={
         "message": "随便聊聊",
         "images": ["data:image/png;base64,AAAA"],
@@ -64,6 +66,19 @@ def test_images_force_recommend(client):
     })
     assert resp.status_code == 200
     assert resp.json()["intent"] == "recommend"
+
+
+def test_image_with_chat_intent_goes_chat(client, monkeypatch):
+    # 模型判定为闲聊（即使有图）→ 对外契约 chat
+    monkeypatch.setattr(ModelRepository, "get_qianwen_vl", staticmethod(
+        lambda: FakeModel('{"intent": "chat", "dimension": "general", "photo_type": "unknown", "info": {}}')))
+    resp = client.post("/api/agent/chat", json={
+        "message": "这张图好看吗",
+        "images": ["data:image/png;base64,AAAA"],
+        "history": [],
+    })
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "chat"
 
 
 def test_history_context_passed(client):
