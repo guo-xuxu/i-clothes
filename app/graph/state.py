@@ -15,6 +15,8 @@ class OutfitState(TypedDict, total=False):
         dimension: 消息主题所在知识维度（9 大维度或 "general"，闲聊也归类）。
         photo_type: 照片类型（"full_body"|"half_body"|"head_shot"|"unknown"）。
         analysis: 形象/必要信息文本（体型/肤色/脸型/当前穿着/场合线索，供推荐节点 prompt）。
+        rewritten_query: 改写后的检索查询（LLM 改写，供检索节点消费；chat 原样透传）。
+        rewrite_keywords: 改写提取的关键检索词列表。
         suggestion: 最终回复文本（推荐建议或闲聊回复）。
     """
 
@@ -26,4 +28,6 @@ class OutfitState(TypedDict, total=False):
     dimension: str
     photo_type: str
     analysis: str
+    rewritten_query: str
+    rewrite_keywords: list[str]
     suggestion: str

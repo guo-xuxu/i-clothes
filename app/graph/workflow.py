@@ -1,6 +1,7 @@
 """穿搭推荐工作流的图定义与编译。
 
 流程：START → query_analyzer（意图/维度/照片类型/信息提取）
+  → query_rewriter（查询改写，chat 透传）
   - recommend（outfit/match/style/color）→ recommend_outfit
   - chat → chat_reply
 """
@@ -11,6 +12,7 @@ from langgraph.graph import END, START, StateGraph
 from app.graph.nodes import (
     chat_reply,
     query_analyzer,
+    query_rewriter,
     recommend_outfit,
 )
 from app.graph.state import OutfitState
@@ -27,12 +29,14 @@ def get_workflow():
     graph = StateGraph(OutfitState)
 
     graph.add_node("query_analyzer", query_analyzer)
+    graph.add_node("query_rewriter", query_rewriter)
     graph.add_node("recommend_outfit", recommend_outfit)
     graph.add_node("chat_reply", chat_reply)
 
     graph.add_edge(START, "query_analyzer")
+    graph.add_edge("query_analyzer", "query_rewriter")
     graph.add_conditional_edges(
-        "query_analyzer",
+        "query_rewriter",
         _route_by_intent,
         {
             "recommend": "recommend_outfit",

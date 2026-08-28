@@ -131,6 +131,11 @@
   `query_analyzer.py`——对外契约不变（响应 intent 仍为 recommend|chat，前端零改动），
   新字段（intent_detail/dimension/photo_type/analysis）只在内部流转，供后续检索消费
 
+### Added
+- 查询改写节点 `app/graph/nodes/query_rewriter.py`（检索前置）：DeepSeek 把用户问题改写成检索查询
+  `{query, keywords}`——代词指代消解（结合会话历史）+ 规范/同义表达 + 保留核心检索词；
+  输入带意图/维度定向；chat 意图跳过（不检索不花钱）；失败回退原文（fail-open）
+
 **变更原因**：完成 MVP 前 3 步（项目结构、后端、前端）。采用 LangGraph
 便于后续扩展 DeepSeek 识别/生图、季节/主题节点；模型调用集中封装，换模型只改一处。
 MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信息（SQL）、
