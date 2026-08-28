@@ -170,6 +170,10 @@ async def query_analyzer(state: OutfitState) -> OutfitState:
         analysis = await analyze_with_image(images, message)
     else:
         analysis = analyze_text(message)
+    logger.info(
+        "意图分析: intent=%s dimension=%s photo_type=%s message=%.80s",
+        analysis.intent, analysis.dimension, analysis.photo_type, message,
+    )
     return {
         "intent": "recommend" if analysis.intent != "chat" else "chat",
         "intent_detail": analysis.intent,
