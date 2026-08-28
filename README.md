@@ -15,6 +15,25 @@ Python 收敛为无状态 AI-Agent 服务（FastAPI + LangGraph，:8000），仅
                         PostgreSQL + Redis                              LLM（DeepSeek/千问）
 ```
 
+## 知识子系统（RAG）
+
+穿搭知识文档（`app/knowledge/docs/`，9 大维度：廓形/身材/面料/风格/图案/配饰/场合/颜色/肤色）
+经离线构建生成**知识图谱 + 向量库**：
+
+```
+docs/*.md → 切块 → DeepSeek 联合抽取（实体/关系/关键词）
+          → 实体归并（L1/L2 同义词典 + 同维度向量候选 + LLM 判定）
+          → networkx 建图（graph.json）+ Chroma 向量落盘（实体向量 + chunk 向量）
+```
+
+- **增量入库**：`POST /api/knowledge/import`（后台线程执行、单飞——已在跑返回 409；
+  body 可选 `{"paths": [...]}`，缺省全量扫描；只处理未入库/内容变化的文档）
+- **状态查询**：`GET /api/knowledge/import/status` → `{"status": "idle|running|failed",
+  "last_stats": {...}}`
+- 实现方案：`app/knowledge/IMPLEMENTATION.md`；规划：`docs/RAG知识图谱规划.md`
+- 数据产物在 `app/knowledge/data/`（git-ignored，可随时重建）；在线混合召回
+  （`app/knowledge/retrieve/`）接入中
+
 ## 快速启动
 
 按顺序启动（前置：PostgreSQL :5432 与 Redis :6379 已运行）：

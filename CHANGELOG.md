@@ -107,6 +107,19 @@
 - chromadb 跨进程索引丢失：数据量 < 默认 `hnsw:sync_threshold`(1000) 时 HNSW 索引
   不落盘、进程退出即丢，collection metadata 设 `hnsw:sync_threshold=3` 强制进程内落盘
 
+### Added
+- 入库接口 `app/knowledge/service.py` + `app/api/routers/knowledge.py`：
+  `POST /api/knowledge/import`（后台线程增量入库，单飞——已在跑返回 409；body 可选
+  `{"paths": [...]}`，缺省全量扫描）+
+  `GET /api/knowledge/import/status`（`idle|running|failed` + 最近一次 `last_stats`）
+- 全量入库完成：46 篇知识文档 → 图谱 **1277 节点 / 1900 边**、实体向量 1277（与图节点
+  1:1 对齐）、chunk 向量 89，9 大维度全覆盖；耗时约 1 小时 10 分（新增 33 / 跳过 13 / 失败 0）
+
+### Changed
+- `app/knowledge/data/`（图谱 / Chroma / 登记表 / 同义词典，构建产物）移出 git 跟踪并加入
+  `.gitignore`——可随时经 `POST /api/knowledge/import` 重建；同时清理误提交的
+  `.git.bak-*`、`.workbuddy/` 目录
+
 **变更原因**：完成 MVP 前 3 步（项目结构、后端、前端）。采用 LangGraph
 便于后续扩展 DeepSeek 识别/生图、季节/主题节点；模型调用集中封装，换模型只改一处。
 MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信息（SQL）、
@@ -140,6 +153,10 @@ MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信�
 - `app/config.py`（`QIANWEN_EMBEDDING_MODEL`）、`app/knowledge/config.py`
   （`CHROMA_DIR`、`SYNONYMS_PATH`、`MERGE_THRESHOLD`、`MERGE_TOP_K`）
 - `app/knowledge/IMPLEMENTATION.md`（实现方案文档）
+- `app/knowledge/service.py`（新增，入库服务：后台线程 + 单飞 + 状态机）
+- `app/api/routers/knowledge.py`（新增，`POST /api/knowledge/import` + `GET .../status`）
+- `app/main.py`（挂载 knowledge 路由）、`test/test_knowledge_import.py`（新增，契约/状态机测试）
+- `.gitignore`（`app/knowledge/data/`、`.git.bak-*/`、`.workbuddy/`）
 
 ---
 
