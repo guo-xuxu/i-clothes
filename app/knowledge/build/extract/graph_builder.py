@@ -41,6 +41,8 @@ class GraphBuilder:
 
     graph: nx.DiGraph = field(default_factory=nx.DiGraph)
     entity_aliases: dict[str, str] = field(default_factory=dict)
+    _entity_ids: dict[str, int] = field(default_factory=dict, init=False, repr=False)
+    _next_id: int = field(default=1, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """初始化图元数据（构建信息）。"""
@@ -90,6 +92,89 @@ class GraphBuilder:
         return current
 
     # ------------------------------------------------------------------
+    # 实体编号
+    # ------------------------------------------------------------------
+    def get_entity_id(self, name: str) -> int | None:
+        """查询实体编号（内存 hashmap，O(1)）。
+
+        Args:
+            name: 实体名（规范名）。
+
+        Returns:
+            该实体的编号 eid；不存在返回 None。
+        """
+        return self._entity_ids.get(name)
+
+    def ensure_node(self, name: str) -> int:
+        """确保节点存在，并分配/复用实体编号（公开，孤立实体也可调用）。
+
+        Returns:
+            该实体的编号 eid。
+        """
+        eid = self._entity_ids.get(name)
+        if not self.graph.has_node(name):
+            if eid is None:
+                eid = self._next_id
+                self._entity_ids[name] = eid
+                self._next_id += 1
+            self.graph.add_node(
+                name,
+                eid=eid,
+                type="",
+                description="",
+                dimension="",
+                sources=[],
+                aliases=[],
+            )
+            self.graph.graph["entity_count"] += 1
+        return eid
+
+    def add_entity(
+        self,
+        name: str,
+        *,
+        type: str = "",
+        description: str = "",
+        dimension: str = "",
+        source: str = "",
+    ) -> int:
+        """添加/更新实体节点（含完整属性），返回 eid。
+
+        属性合并策略：
+        - type/description/dimension：首次出现时记录，后续出现保留首次值；
+        - sources：累加去重（同一实体来自多篇文档）；
+        - aliases：预留空列表，供后续实体归并时填充同义词。
+
+        Args:
+            name: 实体名（会自动 canonicalize）。
+            type: 实体类型。
+            description: 实体描述。
+            dimension: 所属维度中文名。
+            source: 来源文档（相对路径）。
+
+        Returns:
+            该实体的编号 eid。
+        """
+        name = self.canonicalize(name)
+        eid = self.ensure_node(name)
+        node = self.graph.nodes[name]
+
+        if not node.get("type") and type:
+            node["type"] = type
+        if not node.get("description") and description:
+            node["description"] = description
+        if not node.get("dimension") and dimension:
+            node["dimension"] = dimension
+
+        if source:
+            sources = node.setdefault("sources", [])
+            if source not in sources:
+                sources.append(source)
+
+        node.setdefault("aliases", [])
+        return eid
+
+    # ------------------------------------------------------------------
     # 增量添加
     # ------------------------------------------------------------------
     def add_triple(
@@ -117,13 +202,13 @@ class GraphBuilder:
         t = self.canonicalize(tail)
         if not h or not r or not t:
             return False
+        # 自环过滤：实体归并后 head/tail 可能归一到同一节点（如「A型体型 --相似--> 梨形身材」
+        # 归并成「梨形身材 --相似--> 梨形身材」），自环无信息量且污染图遍历，直接跳过。
+        if h == t:
+            return False
 
-        if not self.graph.has_node(h):
-            self.graph.add_node(h)
-            self.graph.graph["entity_count"] += 1
-        if not self.graph.has_node(t):
-            self.graph.add_node(t)
-            self.graph.graph["entity_count"] += 1
+        self.ensure_node(h)
+        self.ensure_node(t)
 
         # 边去重：同 head-relation-tail 只保留一条
         if self.graph.has_edge(h, t) and self.graph.get_edge_data(h, t).get("relation") == r:
@@ -210,3 +295,50 @@ class GraphBuilder:
         )
         logger.info("图谱已落盘: %s（%d 节点, %d 边）",
                     target, self.graph.number_of_nodes(), self.graph.number_of_edges())
+
+    def load(self, path: str | Path = GRAPH_PATH) -> "GraphBuilder":
+        """从 graph.json 加载图（用于增量构建：先载入已有图，再追加新三元组）。
+
+        Args:
+            path: graph.json 路径。
+
+        Returns:
+            self，支持链式调用。
+        """
+        import json
+
+        target = Path(path)
+        if not target.is_file():
+            logger.info("图谱文件不存在，从空图开始: %s", target)
+            return self
+
+        data = json.loads(target.read_text(encoding="utf-8"))
+        self.graph = nx.DiGraph()
+        self.graph.graph.update(data.get("meta", {}))
+        self._entity_ids = {}
+        self._next_id = 1
+
+        for n in data.get("nodes", []):
+            nid = n.get("id")
+            if nid is None:
+                continue
+            self.graph.add_node(nid, **{k: v for k, v in n.items() if k != "id"})
+            eid = n.get("eid")
+            if eid is not None:
+                self._entity_ids[nid] = eid
+                self._next_id = max(self._next_id, eid + 1)
+
+        for e in data.get("edges", []):
+            h, t = e.get("head"), e.get("tail")
+            if not h or not t:
+                continue
+            self.graph.add_edge(h, t, **{k: v for k, v in e.items() if k not in ("head", "tail")})
+
+        # 重算计数，比信任 meta 更可靠
+        self.graph.graph["entity_count"] = self.graph.number_of_nodes()
+        self.graph.graph["edge_count"] = self.graph.number_of_edges()
+        logger.info(
+            "已加载图谱: %s（%d 节点, %d 边）",
+            target, self.graph.number_of_nodes(), self.graph.number_of_edges(),
+        )
+        return self

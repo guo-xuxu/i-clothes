@@ -1,15 +1,17 @@
-# 知识图谱 + 向量混合 RAG 实施规划（待启动）
+# 知识图谱 + 向量混合 RAG 实施规划（已启动）
 
-> **状态**：设计方向已确认，**未排期**。启动条件：双服务迁移 PR 合并到 `main` 后，
-> 从 `main` 拉新分支 `feat/knowledge-graph-rag` 开工。
-> 关联：本规划是 `docs/superpowers/specs/2026-08-17-springboot-migration-design.md`
-> 的后续功能规划；开工前据此另立 spec 与实施计划。
+> **状态**：**已启动，离线构建链路已落地**。在 `feat/knowledge-graph-rag` 分支实现中。
+> 已完成：文档读取 → 切块 → DeepSeek 联合抽取 → 实体归并 → networkx 建图 →
+> graph.json 落盘；实体/chunk embedding → Chroma 落盘；增量幂等构建。
+> 待接入：在线混合召回（retrieve_context 节点）与上传接口。
+> 详细实现记录见 `app/knowledge/IMPLEMENTATION.md`（**临时文档**，本规划为长期权威）。
 
-## 0. 为什么现在不做
+## 0. 实现进展
 
-双服务迁移（Java 业务后端 + Python 无状态 AI-Agent）刚落地，当前优先事项是
-**把现有进度稳定下来、测试守住、PR 合并**。RAG 是新功能，等基座稳定后从干净的
-`main` 分支开始，避免在未合并的迁移分支上叠加风险。
+（原「为什么现在不做」已过期，改为记录当前进展）
+
+离线构建链路已完成并端到端验证（已入库 12 篇：图 359 节点 / Chroma 359 实体向量 +
+25 chunk 向量，三方对齐）。核心模块见 §3.2；剩余工作为在线召回（§3.3）与上传接口（§3.1）。
 
 ## 1. 目标与范围
 
@@ -25,9 +27,9 @@
    POST /api/knowledge/documents  → 存 knowledge_documents 表 → 触发异步构建
 
 【构建】Python 工程化流水线（离线/异步）
-   文档 → 分节 → DeepSeek 抽取三元组 (实体, 关系, 目标)
-        → 实体规范化（同义合并：西服/西装）→ networkx 建图 → graph.json 落盘
-   文档 → 切块 → 千问 text-embedding-v3 → PG knowledge_chunks(float8[]) 落盘
+   文档 → 切块 → DeepSeek 联合抽取三元组 (实体, 关系, 关键词)
+        → 实体归并（L1/L2 + 向量候选 + LLM 判定）→ networkx 建图 → graph.json 落盘
+   文档 → 切块 → 千问 text-embedding-v3 → Chroma（实体 + chunk 向量）落盘
 
 【召回】在线（LangGraph 新增节点 retrieve_context，推荐+闲聊都走）
    query → 实体抽取 → 图遍历 1-2 跳 → 关系上下文
@@ -38,10 +40,13 @@
 | 决策点 | 结论（已确认） |
 |---|---|
 | 检索方案 | **图谱 + 向量混合**（微软 GraphRAG / LightRAG 成熟做法） |
-| 建图方式 | **LLM 离线抽取**（DeepSeek） |
+| 建图方式 | **LLM 离线抽取**（DeepSeek，单 chunk 联合抽取实体+关系+关键词） |
 | 图谱存储 | **networkx + graph.json 落盘**（MVP）；未来量级上来再评估 Neo4j |
-| 向量存储 | **现有 PG + float8[] 列 + Python 余弦**（实测 pgvector 未安装；千级 chunk 内毫秒级，超 5k chunk 再升级 pgvector/Milvus） |
-| Embedding | 千问 `text-embedding-v3`（已实测可用，dim=1024） |
+| 向量存储 | **Chroma**（本地持久化 + 自带余弦检索）；最初方案 PG `float8[]` 因无 pgvector、需手写余弦而弃用 |
+| Embedding | 千问 `text-embedding-v3`（已实测可用，dim=1024，单次 batch ≤10 自动分批） |
+| 实体归并 | **边抽边并**：L1 字符串归一 + L2 同义词典（`synonyms.json`，归并结果回写、词典自增长）+ 同维度向量检索候选 + LLM 判定（阈值 distance<0.20） |
+| 实体编号 | 整数自增 eid，作为「图节点 ↔ 实体向量」的统一关联键（内存 hashmap，从 graph.json 重建） |
+| 增量构建 | `processed_docs.json` 登记「相对路径 + 内容 sha256」，已处理且内容未变则跳过 |
 | 边界 | 用户数据归 Java；知识数据（文档/图/向量）归知识子系统（Python 主理、Java 收口上传） |
 | 分支 | 迁移 PR 合并后从 main 拉 `feat/knowledge-graph-rag` |
 
@@ -61,26 +66,43 @@
 `{"document_id", "content"}` → Python 执行构建，完成/失败后回写状态
 （或 Java 轮询状态，MVP 用"Python 同步构建 + Java 异步触发"最简方案，量大再上 Redis 队列）。
 
-### 3.2 工程化构建（Python `knowledge/` 包）
+### 3.2 工程化构建（Python `app/knowledge/` 包）
 
 ```
-knowledge/
-  docs/               # 内置示例知识文档（3-5 篇：色彩/场合/体型/风格/面料）
-  graph_builder.py    # 文档 → 三元组抽取（DeepSeek）→ 实体规范化 → networkx → graph.json
-  vector_builder.py   # 文档切块 → embedding → 写 PG knowledge_chunks
-  graph_store.py      # 图加载/序列化（启动时载入内存缓存，重建后刷新）
-  vector_store.py     # PG 读写（asyncpg/psycopg），余弦检索 top-k
-  retriever.py        # 混合召回：图遍历 1-2 跳 + 向量 top-3 → 拼接上下文
+app/knowledge/
+  config.py                 # 路径 / 切块 / 归并参数（阈值、top-k）集中配置
+  docs/                     # 内置知识文档（9 维度 × 5 篇）
+  data/                     # 构建产物落盘目录
+    graph/graph.json        # 知识图谱（节点/边 + 构建元数据）
+    chroma/                 # Chroma 向量库（entities + chunks 两个 collection）
+    processed_docs.json     # 已处理文档登记表（增量幂等）
+    synonyms.json           # 同义词典（归并结果回写，词典自增长）
+  build/                    # 离线构建流水线
+    document_reader.py      # 扫描 docs/、按子目录推断 9 大维度
+    text_chunk.py           # langchain RecursiveCharacterTextSplitter 切块
+    document_processor.py   # 逐 chunk 调度联合抽取
+    entity_normalizer.py    # L1 字符串归一 + L2 同义词典（可扩展接口）
+    entity_merger.py        # 边抽边并：同维度向量候选 + LLM 判定
+    import_registry.py      # 增量登记表（路径 + sha256）
+    import_all.py           # 全量导入入口（抽取→归并→入图→落盘→登记）
+    extract/
+      graph_extractor.py    # DeepSeek 联合抽取（实体+关系+关键词）
+      graph_builder.py      # 三元组入 networkx 图（实体编号、自环过滤、load）
+  retrieve/                 # 在线召回
+    vector_store.py         # Chroma 读写 + 余弦检索（实体/chunk）
+    graph_store.py          # 图加载/序列化
+    retriever.py            # 混合召回（图遍历 + 向量，待实现）
 ```
 
 **落盘清单（"图谱库和 embedding 落盘"的具体形态）：**
-1. `knowledge/graph/graph.json` — 知识图谱（节点/边 + 构建元数据），
-   可选追加 `knowledge/graph/history/` 留构建历史
-2. PG 表 `knowledge_chunks` — 文本块 + `float8[]` 向量 + 来源
-3. PG 表 `knowledge_documents` — 上传原文与构建状态（状态机，幂等）
+1. `data/graph/graph.json` — 知识图谱：节点含 `{id, eid, type, description, dimension, sources, aliases}`，边含 `{head, relation, tail, strength, keywords}`
+2. `data/chroma/` — Chroma 向量库：`entities`（id=eid，与图节点关联）+ `chunks`（按 document_id）两个 collection
+3. `data/processed_docs.json` — 已处理文档登记表（「相对路径 + 内容 sha256」，幂等判断）
+4. `data/synonyms.json` — 同义词典（L2 归并 + LLM 归并结果回写，词典自增长）
 
-**幂等与更新策略（v1 简单可靠）**：新增/更新文档 → 全量重建图 + 重写向量表
-（知识库小，重建秒级）；重复上传同一文档 → 覆盖 + 重建。
+**幂等与更新策略（增量幂等）**：每篇文档用「相对路径 + 内容 sha256」判断——已处理且
+内容未变则跳过；内容变了哈希变，自动重抽。采用**边抽边并**：每篇抽取后立即归并入图
+（L1/L2 归一 + 同维度向量候选 + LLM 判定），不做全量重建。
 
 ### 3.3 在线召回（LangGraph 新节点 `retrieve_context`）
 
@@ -92,7 +114,9 @@ knowledge/
 **契约不变、Java 零改动、Python 保持无状态**（图是构建产物读入内存的只读缓存，
 不是跨请求状态；向量库是共享 PG）。
 
-## 4. 数据模型（PG，新增，只归知识子系统）
+## 4. 数据模型（知识子系统）
+
+**PG（仅上传接口的状态机，归 Java 主理）：**
 
 ```sql
 CREATE TABLE knowledge_documents (
@@ -104,26 +128,24 @@ CREATE TABLE knowledge_documents (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE TABLE knowledge_chunks (
-    id          BIGSERIAL PRIMARY KEY,
-    document_id UUID REFERENCES knowledge_documents(id) ON DELETE CASCADE,
-    content     TEXT NOT NULL,
-    embedding   float8[] NOT NULL,   -- v1 无 pgvector：Python 侧余弦
-    source      TEXT
-);
-CREATE INDEX idx_knowledge_chunks_doc ON knowledge_chunks(document_id);
 ```
+
+**向量与图谱（归 Python 知识子系统，不落 PG 表）：**
+
+- 图谱：`data/graph/graph.json`（networkx 序列化，节点/边含完整属性）
+- 实体向量：Chroma `entities` collection（id = eid，与图节点关联）
+- 文本块向量：Chroma `chunks` collection（按 document_id 组织）
+
+> 原 `knowledge_chunks` 表（PG `float8[]` 自算余弦）已弃用，改由 Chroma 持久化（自带余弦检索）。
 
 ## 5. 里程碑与工作量
 
-| 里程碑 | 内容 | 估计 |
+| 里程碑 | 内容 | 状态 |
 |---|---|---|
-| M0 | 上传接口 + documents 表 + 状态机 + Java MockMvc 测试 | ~0.5 天 |
-| M1 | graph_builder + vector_builder + 落盘 + dry-run 脚本 + 知识文档样例 | ~1 天 |
-| M2 | retrieve_context 节点接入 chat/recommend + 混合拼接 + Python 单测（mock 抽取/embedding） | ~0.5 天 |
-| M3 | 端到端验收（上传→构建→问答引用知识）+ 调优（top-k/跳数/拼接格式） | ~0.5 天 |
-| 合计 | | ~2.5 天 |
+| M0 | 上传接口 + documents 表 + 状态机 + Java MockMvc 测试 | 待做 |
+| M1 | 抽取 + 建图 + 实体归并 + embedding + 落盘 + 增量幂等 + 知识文档（45 篇） | ✅ 已完成（离线构建链路） |
+| M2 | retrieve_context 节点接入 chat/recommend + 混合拼接 + Python 单测（mock 抽取/embedding） | 待做 |
+| M3 | 端到端验收（上传→构建→问答引用知识）+ 调优（top-k/跳数/拼接格式） | 待做 |
 
 ## 6. 测试与验收
 
@@ -138,8 +160,8 @@ CREATE INDEX idx_knowledge_chunks_doc ON knowledge_chunks(document_id);
 
 | 风险 | 对策 |
 |---|---|
-| LLM 抽取质量不稳 | 实体规范化（同义合并）是图谱质量关键；M1 提供 dry-run 人工检查图谱 JSON |
-| float8[] 全表余弦随知识量线性变慢 | 千级 chunk 毫秒级；>5k chunk 升级 pgvector 或 Milvus（路径已明确） |
+| LLM 抽取质量不稳 | 实体归并（L1/L2 + 向量候选 + LLM 判定）是图谱质量关键；已提供 dry-run 与全量后人工 review |
+| 向量检索随知识量变慢 | Chroma 自带 HNSW 索引，千级向量毫秒级；量级上来再评估 Qdrant/Milvus |
 | 上传→构建异步化 | MVP 后台线程即可；量大换 Redis 队列（基础设施已有） |
 | 构建失败无感知 | 状态机 + `error` 字段 + Java 侧日志；验收覆盖 failed 路径 |
 | 成本 | 建图离线一次性（DeepSeek 批量，几十块）；在线每条消息多一次 embedding（便宜）+ 一次实体抽取（小调用） |

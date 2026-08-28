@@ -87,6 +87,25 @@
   （temperature=0 + 长超时，用于结构化、确定性抽取）
 - `docs/RAG知识图谱规划.md`：图谱 + 向量混合 RAG 实施规划（上传接口契约、
   离线建图流水线、在线召回节点、PG 数据模型、里程碑 M0-M3）
+- 实体归一 `build/entity_normalizer.py`：L1 字符串归一（去空白/全角转半角 NFKC）+
+  L2 同义词典（`data/synonyms.json`，可扩展接口 register_normalizer / register_synonyms）
+- 实体归并 `build/entity_merger.py`：边抽边并——同维度向量检索 top-k + 阈值过滤 +
+  LLM 判定（1 新实体 vs 多候选，Agno 结构化输出）；归并结果回写词典（词典自增长）
+- 增量导入 `build/import_all.py` + 登记表 `build/import_registry.py`：
+  「相对路径 + 内容 sha256」幂等判断，已处理且内容未变的文档跳过
+- 千问 embedding `QianwenEmbedder`（`repositories/model_repo.py`）：openai 客户端直连
+  `text-embedding-v3`（1024 维，自动分批）
+- 实体编号 eid：图节点整数自增编号，作为「图节点 ↔ 实体向量」的统一关联键
+
+### Changed
+- 向量存储由 PG `float8[]`（自算余弦）改为 **Chroma**（`retrieve/vector_store.py`）：
+  实体向量（id=eid 关联图节点）+ chunk 向量两个 collection，自带余弦检索与持久化
+
+### Fixed
+- 自环边过滤：实体归并后 head==tail 的边（如「A型体型--相似-->梨形身材」归并成自环）
+  在图构建时跳过
+- chromadb 跨进程索引丢失：数据量 < 默认 `hnsw:sync_threshold`(1000) 时 HNSW 索引
+  不落盘、进程退出即丢，collection metadata 设 `hnsw:sync_threshold=3` 强制进程内落盘
 
 **变更原因**：完成 MVP 前 3 步（项目结构、后端、前端）。采用 LangGraph
 便于后续扩展 DeepSeek 识别/生图、季节/主题节点；模型调用集中封装，换模型只改一处。
@@ -113,6 +132,14 @@ MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信�
   `docs/`（9 维度子目录 + `README.md` + `silhouette/穿搭公式.md`）、`data/README.md`）
 - `app/repositories/model_repo.py`（新增 `get_deepseek_extractor()`）
 - `docs/RAG知识图谱规划.md`（新建）
+- `app/knowledge/build/{entity_normalizer,entity_merger,import_registry,import_all}.py`（新建）
+- `app/knowledge/data/synonyms.json`（新建，同义词典，归并结果回写）
+- `app/knowledge/retrieve/vector_store.py`（Chroma 实现，替代 PG 方案）
+- `app/knowledge/build/extract/graph_builder.py`（实体编号、自环过滤、load 增量恢复）
+- `app/repositories/model_repo.py`（新增 `get_embedding()` / `QianwenEmbedder`）
+- `app/config.py`（`QIANWEN_EMBEDDING_MODEL`）、`app/knowledge/config.py`
+  （`CHROMA_DIR`、`SYNONYMS_PATH`、`MERGE_THRESHOLD`、`MERGE_TOP_K`）
+- `app/knowledge/IMPLEMENTATION.md`（实现方案文档）
 
 ---
 
@@ -156,4 +183,4 @@ MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信�
 ---
 
 **文档维护**：每次代码提交前更新此文档  
-**最后更新**：2026-08-25
+**最后更新**：2026-08-27

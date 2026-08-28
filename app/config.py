@@ -15,6 +15,7 @@ class Settings:
         "https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
     QIANWEN_MODEL: str = os.getenv("QIANWEN_MODEL", "qwen3.7-max-2026-06-08")
+    QIANWEN_EMBEDDING_MODEL: str = os.getenv("QIANWEN_EMBEDDING_MODEL", "text-embedding-v3")
 
     # DeepSeek（后续版本）
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")

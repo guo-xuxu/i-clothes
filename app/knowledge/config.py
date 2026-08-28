@@ -40,3 +40,16 @@ DATA_DIR = KNOWLEDGE_DIR / "data"
 GRAPH_PATH = DATA_DIR / "graph" / "graph.json"
 # 切块中间产物目录（每篇文档的 chunk + 三元组 JSON 落盘于此）。
 CHUNKS_DIR = DATA_DIR / "chunks"
+# 向量库目录（Chroma 持久化，实体向量 + chunk 向量）。
+CHROMA_DIR = DATA_DIR / "chroma"
+
+# ---------------------------------------------------------------------------
+# 实体归并（build/entity_normalizer.py、build/entity_merger.py）
+# ---------------------------------------------------------------------------
+# L2 同义词典文件路径（别名 → 规范名，改文件即可改映射）。
+SYNONYMS_PATH = DATA_DIR / "synonyms.json"
+# 向量候选筛选的余弦 distance 阈值：distance < 阈值 视为「疑似同义」，
+# 送入 LLM 判定是否合并。越小越严格（只把极相似的送 LLM）。
+MERGE_THRESHOLD = 0.20
+# 向量检索候选数量（同维度 top-k）。
+MERGE_TOP_K = 5
