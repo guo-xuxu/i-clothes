@@ -120,6 +120,17 @@
   `.gitignore`——可随时经 `POST /api/knowledge/import` 重建；同时清理误提交的
   `.git.bak-*`、`.workbuddy/` 目录
 
+### Added
+- 意图分析节点 `app/graph/nodes/query_analyzer.py`：对每条消息输出 intent（outfit/match/style/color/chat）
+  + dimension（9 大知识维度 + general，闲聊也归类）+ photo_type（全身/半身/大头/unknown）
+  + 必要信息（体型/肤色/脸型/当前穿着/场合）；有图走千问多模态一次调用（Pydantic 校验、fail-open），
+  无图走关键词规则（零成本）
+
+### Changed
+- `intent_router.py`（关键词 recommend|chat 二分类）与 `analyze_appearance.py` 合并进
+  `query_analyzer.py`——对外契约不变（响应 intent 仍为 recommend|chat，前端零改动），
+  新字段（intent_detail/dimension/photo_type/analysis）只在内部流转，供后续检索消费
+
 **变更原因**：完成 MVP 前 3 步（项目结构、后端、前端）。采用 LangGraph
 便于后续扩展 DeepSeek 识别/生图、季节/主题节点；模型调用集中封装，换模型只改一处。
 MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信息（SQL）、
