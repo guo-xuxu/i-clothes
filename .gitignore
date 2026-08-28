@@ -37,3 +37,9 @@ Thumbs.db
 # Java��Maven �������
 target/
 
+
+# 知识库构建产物（可重建，不入库）
+app/knowledge/data/
+# 备份/工具目录
+.git.bak-*/
+.workbuddy/
