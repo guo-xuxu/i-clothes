@@ -90,3 +90,43 @@ async def run_chat(
         "reply": result["suggestion"],
         "intent": result.get("intent", "chat"),
     }
+
+
+# 生成回复的节点：其 LLM token 进入 SSE 流；其余节点（分析/改写/检索）的 token 被过滤
+GENERATION_NODES = ("chat_reply", "recommend_outfit")
+
+
+async def stream_chat(
+    message: str, images: list[str], history: list[dict]
+):
+    """流式执行工作流，逐 token yield (delta, intent|None)。
+
+    - 仅转发 GENERATION_NODES 的 token（query_analyzer/query_rewriter/retrieve_context
+      的耗时在首 token 前，不进流）；
+    - intent 从 query_analyzer 的 updates 输出取映射后的值（recommend|chat），
+      避免流结束后重跑工作流（不重复计费）；
+    - 生成器末尾 yield ("", intent) 作为结束信号。
+
+    Args:
+        message: 用户本轮文字。
+        images: 本轮图片 data URL 列表。
+        history: 会话历史 [{"role", "content"}, ...]，不含本轮。
+    """
+    workflow = get_workflow()
+    intent = "chat"
+    inputs = {"images": images, "description": message, "messages": history}
+    async for mode, payload in workflow.astream(
+        inputs, stream_mode=["messages", "updates"]
+    ):
+        if mode == "messages":
+            chunk, meta = payload
+            node = meta.get("langgraph_node")
+            if node in GENERATION_NODES:
+                content = getattr(chunk, "content", "")
+                if content:
+                    yield content, None
+        else:  # updates：节点完成时输出 {node: output}
+            for node, output in payload.items():
+                if node == "query_analyzer":
+                    intent = output.get("intent", "chat")
+    yield "", intent

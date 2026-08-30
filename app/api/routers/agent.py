@@ -1,14 +1,16 @@
 """Agent 服务契约接口：无状态推理入口（Java 业务后端调用）。"""
+import json
 import logging
 import re
 
 import httpx
 import openai
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.graph.workflow import run_chat
+from app.graph.workflow import run_chat, stream_chat
 
 logger = logging.getLogger(__name__)
 
@@ -67,3 +69,31 @@ async def agent_chat(payload: AgentChatRequest) -> AgentChatResponse:
         logger.exception("Agent 推理失败（LLM 未配置或调用失败）: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc))
     return AgentChatResponse(reply=result["reply"], intent=result["intent"])
+
+
+@router.post("/api/agent/chat/stream")
+async def agent_chat_stream(payload: AgentChatRequest) -> StreamingResponse:
+    """无状态流式推理（SSE）：逐 token 输出回复，结束事件携带 intent。
+
+    事件格式（text/event-stream，每行 data: <json>）：
+        {"delta": "..."}                   逐 token
+        {"done": true, "intent": "recommend"|"chat"}   结束
+        {"error": "..."}                   中途异常（LLM 失败）
+    校验失败（空消息/图片非法）以 400 在流开始前返回。
+    """
+    message = payload.message.strip()
+    images = _validate_images(payload.images)
+    if not message and not images:
+        raise HTTPException(status_code=400, detail="消息内容不能为空")
+
+    async def event_gen():
+        try:
+            async for delta, intent in stream_chat(message, images, payload.history):
+                if delta:
+                    yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'done': True, 'intent': intent}, ensure_ascii=False)}\n\n"
+        except Exception as exc:  # noqa: BLE001 - 流中途失败以 error 事件结束
+            logger.exception("Agent 流式推理失败: %s", exc)
+            yield f"data: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
