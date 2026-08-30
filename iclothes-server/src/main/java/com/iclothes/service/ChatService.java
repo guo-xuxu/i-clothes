@@ -144,7 +144,17 @@ public class ChatService {
 
                             @Override
                             public void onDone(String intent) {
-                                persistStream(cid, message, images, reply.toString(), intent, isNew);
+                                String title = persistStream(
+                                        cid, message, images, reply.toString(), intent, isNew);
+                                try {
+                                    // 元数据事件：前端绑定会话 id 与标题（流式接口无独立响应体）
+                                    emitter.send(SseEmitter.event().data(Map.of(
+                                            "conversation_id", cid.toString(),
+                                            "title", title == null ? "新对话" : title)));
+                                } catch (Exception e) {
+                                    emitter.completeWithError(e);
+                                    return;
+                                }
                                 emitter.complete();
                             }
 
@@ -159,10 +169,10 @@ public class ChatService {
         });
     }
 
-    /** 流式结束后的落库（与非流式 chat 的事务四步一致）。 */
-    private void persistStream(UUID cid, String message, List<String> images,
-                               String reply, String intent, boolean isNew) {
-        transactionTemplate.execute(status -> {
+    /** 流式结束后的落库（与非流式 chat 的事务四步一致），返回标题。 */
+    private String persistStream(UUID cid, String message, List<String> images,
+                                 String reply, String intent, boolean isNew) {
+        return transactionTemplate.execute(status -> {
             conversations.appendUser(cid, message, images);
             conversations.appendAssistant(cid, reply, intent);
             conversations.touch(cid);

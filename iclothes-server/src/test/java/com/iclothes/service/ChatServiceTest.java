@@ -140,7 +140,7 @@ class ChatServiceTest {
 
         service.chatStream(cid.toString(), "你好", List.of(), emitter);
 
-        verify(emitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+        verify(emitter, times(3)).send(any(SseEmitter.SseEventBuilder.class)); // 2 delta + 1 元数据
         verify(emitter).complete();
         // done 后落库：累积回复 "你好" 作为 assistant 内容
         verify(conversations).appendUser(eq(cid), eq("你好"), anyList());
