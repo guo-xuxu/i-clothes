@@ -136,6 +136,17 @@
   `{query, keywords}`——代词指代消解（结合会话历史）+ 规范/同义表达 + 保留核心检索词；
   输入带意图/维度定向；chat 意图跳过（不检索不花钱）；失败回退原文（fail-open）
 
+### Added
+- 在线混合召回（检索链路接通）：
+  - `retrieve/graph_store.py`：graph.json 加载 + 内存缓存（只读，构建后 reload）+ 实体子串匹配
+    （查询文本 + 改写关键词双通道）+ 出/入边 1-2 跳去重遍历
+  - `retrieve/retriever.py`：混合召回——图路（2 跳关系上下文）+ 向量路（改写查询 embedding →
+    Chroma chunk top-k，余弦距离阈值 0.5 + **维度白名单过滤**，维度由 intent/照片类型推导）；
+    任一路失败降级（fail-open）
+  - `graph/nodes/retrieve_context.py`：LangGraph 召回节点，输出 `state["rag_context"]`；
+    `recommend_outfit` prompt 注入【参考知识】段（无关则忽略）
+- 可观测：`app/main.py` 启用应用 INFO 日志（意图分析/在线召回/改写调用在服务端控制台可见）
+
 **变更原因**：完成 MVP 前 3 步（项目结构、后端、前端）。采用 LangGraph
 便于后续扩展 DeepSeek 识别/生图、季节/主题节点；模型调用集中封装，换模型只改一处。
 MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信息（SQL）、
