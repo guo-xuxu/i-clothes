@@ -26,8 +26,9 @@ services:
       retries: 10
 
   iclothes-python:
-    build: .
-    dockerfile: app/Dockerfile
+    build:
+      context: .
+      dockerfile: app/Dockerfile
     environment:
       QIANWEN_API_KEY: ${QIANWEN_API_KEY}
       QIANWEN_BASE_URL: ${QIANWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
