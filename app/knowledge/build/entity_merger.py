@@ -11,24 +11,26 @@
 设计原则：
 - 不做全量集中聚类，只做「新实体 vs 已有实体」的增量归并；
 - 向量检索限定同维度（消歧靠维度标签，跨维度不参与比对）；
-- LLM 判定 1 个新实体 vs 多个候选，输出简短 JSON。
+- LLM 判定 1 个新实体 vs 多个候选，输出简短 JSON（langchain ChatOpenAI + 手动解析）。
 """
 from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
-from agno.agent import Agent
-from agno.models.openai.like import OpenAILike
-from pydantic import BaseModel, Field
+from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field, ValidationError
 
-from app.config import settings
 from app.knowledge.build.entity_normalizer import EntityNormalizer
 from app.knowledge.config import MERGE_THRESHOLD, MERGE_TOP_K
 from app.knowledge.retrieve.vector_store import VectorStore
+from app.repositories.model_repo import ModelRepository
 
 logger = logging.getLogger(__name__)
+
+_JSON_RE = re.compile(r"\{.*\}", re.S)
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +68,20 @@ _MERGE_PROMPT = """你是穿搭知识图谱的实体归并判定器。判断「�
 """
 
 
+def parse_judgement(raw: str) -> MergeJudgement | None:
+    """解析 LLM 输出为 MergeJudgement；失败返回 None（fail-open）。"""
+    if not raw:
+        return None
+    m = _JSON_RE.search(raw)
+    if not m:
+        return None
+    try:
+        return MergeJudgement(**json.loads(m.group(0)))
+    except (ValidationError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        logger.warning("归并判定 JSON 解析失败: %.120s (%s)", raw, exc)
+        return None
+
+
 @dataclass
 class MergeDecision:
     """一次实体归并解析的结果。"""
@@ -91,7 +107,7 @@ class EntityMerger:
         vector_store: VectorStore,
         embedder,
         *,
-        judge_agent: Agent | None = None,
+        judge_model=None,
         threshold: float = MERGE_THRESHOLD,
         top_k: int = MERGE_TOP_K,
     ):
@@ -101,28 +117,7 @@ class EntityMerger:
         self.embedder = embedder
         self.threshold = threshold
         self.top_k = top_k
-        self._judge_agent = judge_agent or self._build_judge_agent()
-
-    @staticmethod
-    def _build_judge_agent() -> Agent:
-        """构造接入 DeepSeek 的归并判定 Agent（结构化输出）。
-
-        与 graph_extractor 一致：关闭原生 structured/json_schema outputs，
-        由 output_schema（Pydantic）在解析环节做校验。
-        """
-        model = OpenAILike(
-            id=settings.DEEPSEEK_MODEL,
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url=settings.DEEPSEEK_BASE_URL,
-            temperature=0,
-            supports_native_structured_outputs=False,
-            supports_json_schema_outputs=False,
-        )
-        return Agent(
-            model=model,
-            output_schema=MergeJudgement,
-            description="穿搭知识图谱实体归并判定器，输出简短结构化 JSON。",
-        )
+        self._judge_model = judge_model if judge_model is not None else ModelRepository.get_deepseek()
 
     # ------------------------------------------------------------------
     # 归并解析
@@ -201,7 +196,7 @@ class EntityMerger:
         return MergeDecision(canonical, aliases, True)
 
     def _judge(self, name: str, type: str, description: str, candidates: list[dict]) -> MergeJudgement | None:
-        """调用 LLM 判定新实体是否与某个候选同义。"""
+        """调用 LLM 判定新实体是否与某个候选同义（DeepSeek 结构化 JSON）。"""
         cand_json = json.dumps(
             [
                 {"name": c["name"], "type": c.get("type", ""), "description": c.get("description", "")}
@@ -212,5 +207,5 @@ class EntityMerger:
         prompt = _MERGE_PROMPT.format(
             name=name, type=type, description=description, candidates=cand_json
         )
-        response = self._judge_agent.run(prompt)
-        return response.content if isinstance(response.content, MergeJudgement) else None
+        response = self._judge_model.invoke([HumanMessage(content=prompt)])
+        return parse_judgement(response.content)

@@ -1,16 +1,20 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-python-multipart==0.0.20
-python-dotenv==1.0.1
+# i-clothes Python 依赖（与本地已验证环境版本一致；国内服务器部署时 pip 会走 Dockerfile 里的阿里云镜像）
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+python-multipart==0.0.32
+python-dotenv==1.2.2
 pillow==11.1.0
 langgraph==0.2.60
 langchain-core==0.3.28
 langchain-openai==0.2.14
 langchain-text-splitters==0.3.2
-networkx==3.3
+networkx==3.6.1
+# openai 不钉死上限：langchain-openai 0.2.14 要求 openai<2，交给 pip 解析到最新 1.x
 openai>=1.61.0
 httpx==0.28.1
-arize-phoenix-otel==0.7.1
-agno
+# Phoenix：otel 包负责追踪，phoenix 本体是 main.py 启动时拉起的服务器（-m phoenix.server.main）。
+# 钉 18.x：19.x 依赖 pydantic-ai-slim[extras]→openai>=2.29，与 langchain-openai 0.2.14（openai<2）冲突
+arize-phoenix==18.1.0
+arize-phoenix-otel==0.17.1
 # 知识库向量存储（版本与本地一致，Chroma 数据文件对版本敏感）
 chromadb==1.5.9

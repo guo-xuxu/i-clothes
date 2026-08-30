@@ -1,28 +1,31 @@
-"""联合抽取：一次调用同时产出实体与关系（Agno 结构化输出）。
+"""联合抽取：一次调用同时产出实体与关系（DeepSeek 结构化 JSON）。
 
 职责（见 docs/RAG知识图谱规划.md 3.2）：
 - 以「单个 chunk」为输入，调用 DeepSeek 一次完成实体识别 + 关系提取；
-- 用 Agno 的 Agent + output_schema 约束输出为 Pydantic 模型；
+- 输出为 Pydantic 约束的 JSON（ExtractionSchema），解析失败 fail-open 返回空结果；
 - 返回带描述的实体、带强度与关键词的关系、以及内容级关键词。
 
 设计原则：
 - 单次调用（不做实体/关系二次调用）；
 - 中文输出，实体名保持原文，与下游中文检索/回答对齐；
 - 关系有方向（source → target），与 GraphBuilder 的有向图匹配；
-- 用 Agno 的 OpenAILike 接入 DeepSeek（OpenAI 兼容端点）。
+- 用 langchain ChatOpenAI 接 DeepSeek（OpenAI 兼容端点），与 model_repo 其他模型一致。
 """
 from __future__ import annotations
 
+import json
 import logging
+import re
 
-from agno.agent import Agent
-from agno.models.openai.like import OpenAILike
-from pydantic import BaseModel, Field
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field, ValidationError
 
-from app.config import settings
 from app.knowledge.build.text_chunk import TextChunk
+from app.repositories.model_repo import ModelRepository
 
 logger = logging.getLogger(__name__)
+
+_JSON_RE = re.compile(r"\{.*\}", re.S)
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +111,7 @@ _EXTRACT_PROMPT = """你是一个穿搭知识抽取器。请从下面的文本�
 
 
 class GraphExtractor:
-    """联合抽取器（单 chunk 粒度，单次调用，Agno 结构化输出）。
+    """联合抽取器（单 chunk 粒度，单次调用，DeepSeek 结构化 JSON）。
 
     用法：
         extractor = GraphExtractor()
@@ -116,38 +119,13 @@ class GraphExtractor:
         result = await extractor.extract(chunk)  # 异步
     """
 
-    def __init__(self, agent: Agent | None = None):
+    def __init__(self, model=None):
         """初始化抽取器。
 
         Args:
-            agent: Agno Agent；默认按 config 里的 DeepSeek 配置构造。
+            model: langchain ChatOpenAI 兼容对象；默认 ModelRepository.get_deepseek()。
         """
-        if agent is not None:
-            self._agent = agent
-        else:
-            self._agent = self._build_agent()
-
-    @staticmethod
-    def _build_agent() -> Agent:
-        """按配置构造接入 DeepSeek 的 Agno Agent。
-
-        DeepSeek 的 OpenAI 兼容端点不支持 json_schema 类型的 response_format，
-        因此关闭 structured/json_schema outputs，让 Agno 回退到 json_object 模式，
-        再由 output_schema（Pydantic）在响应解析环节做结构化校验。
-        """
-        model = OpenAILike(
-            id=settings.DEEPSEEK_MODEL,
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url=settings.DEEPSEEK_BASE_URL,
-            temperature=0,
-            supports_native_structured_outputs=False,
-            supports_json_schema_outputs=False,
-        )
-        return Agent(
-            model=model,
-            output_schema=ExtractionSchema,
-            description="穿搭知识实体与关系抽取器，输出结构化 JSON。",
-        )
+        self._model = model if model is not None else ModelRepository.get_deepseek()
 
     async def extract(self, chunk: TextChunk) -> "ExtractionResult":
         """从单个 chunk 联合抽取实体与关系（异步）。
@@ -163,31 +141,46 @@ class GraphExtractor:
             return ExtractionResult()
 
         try:
-            response = await self._agent.arun(_EXTRACT_PROMPT.format(text=text))
-            return ExtractionResult.from_output(response.content)
+            response = await self._model.ainvoke([
+                SystemMessage(content="你只输出合法 JSON，不输出其他任何内容。"),
+                HumanMessage(content=_EXTRACT_PROMPT.format(text=text)),
+            ])
+            return parse_extraction(response.content)
         except Exception as exc:  # noqa: BLE001 - 单块失败不中断整篇/整批
             logger.warning("联合抽取失败 (source=%s index=%d): %s", chunk.source, chunk.index, exc)
             return ExtractionResult()
 
     def extract_sync(self, chunk: TextChunk) -> "ExtractionResult":
-        """从单个 chunk 联合抽取实体与关系（同步）。
-
-        Args:
-            chunk: 待抽取的文本块。
-
-        Returns:
-            ExtractionResult；内容为空或抽取失败时返回空结果。
-        """
+        """从单个 chunk 联合抽取实体与关系（同步）。"""
         text = (chunk.content or "").strip()
         if not text:
             return ExtractionResult()
 
         try:
-            response = self._agent.run(_EXTRACT_PROMPT.format(text=text))
-            return ExtractionResult.from_output(response.content)
+            response = self._model.invoke([
+                SystemMessage(content="你只输出合法 JSON，不输出其他任何内容。"),
+                HumanMessage(content=_EXTRACT_PROMPT.format(text=text)),
+            ])
+            return parse_extraction(response.content)
         except Exception as exc:  # noqa: BLE001
             logger.warning("联合抽取失败 (source=%s index=%d): %s", chunk.source, chunk.index, exc)
             return ExtractionResult()
+
+
+def parse_extraction(raw: str) -> "ExtractionResult":
+    """解析 LLM 输出为 ExtractionResult；任何失败返回空结果（fail-open）。"""
+    if not raw:
+        return ExtractionResult()
+    m = _JSON_RE.search(raw)
+    if not m:
+        return ExtractionResult()
+    try:
+        data = json.loads(m.group(0))
+        schema = ExtractionSchema(**data)
+        return ExtractionResult.from_output(schema)
+    except (ValidationError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        logger.warning("联合抽取 JSON 解析失败: %.120s (%s)", raw, exc)
+        return ExtractionResult()
 
 
 class ExtractionResult:
@@ -212,23 +205,16 @@ class ExtractionResult:
 
     @classmethod
     def from_output(cls, output: BaseModel | None) -> "ExtractionResult":
-        """从 Agno 结构化输出（Pydantic 实例）构造结果。
+        """从结构化输出（Pydantic 实例）构造结果。
 
         Args:
-            output: Agent 返回的 output_schema 实例（ExtractionSchema）。
+            output: ExtractionSchema 实例。
 
         Returns:
             ExtractionResult；output 为空或类型不符时返回空结果。
         """
         if output is None:
             return cls()
-        if isinstance(output, ExtractionSchema):
-            return cls(
-                entities=[e.model_dump() for e in output.entities],
-                relationships=[r.model_dump() for r in output.relationships],
-                content_keywords=list(output.content_keywords),
-            )
-        # 兜底：尝试按属性提取（兼容可能的包装类型）
         try:
             return cls(
                 entities=[e.model_dump() for e in output.entities],
@@ -236,7 +222,6 @@ class ExtractionResult:
                 content_keywords=list(output.content_keywords),
             )
         except Exception:  # noqa: BLE001
-            logger.debug("无法从输出提取结构化结果: %r", type(output))
             return cls()
 
     @property
