@@ -2,7 +2,7 @@
 
 流程：START → query_analyzer（意图/维度/照片类型/信息提取）
   → query_rewriter（查询改写，chat 透传）
-  - recommend（outfit/match/style/color）→ recommend_outfit
+  - recommend → retrieve_context（图+向量混合召回）→ recommend_outfit
   - chat → chat_reply
 """
 from functools import lru_cache
@@ -14,6 +14,7 @@ from app.graph.nodes import (
     query_analyzer,
     query_rewriter,
     recommend_outfit,
+    retrieve_context,
 )
 from app.graph.state import OutfitState
 
@@ -30,6 +31,7 @@ def get_workflow():
 
     graph.add_node("query_analyzer", query_analyzer)
     graph.add_node("query_rewriter", query_rewriter)
+    graph.add_node("retrieve_context", retrieve_context)
     graph.add_node("recommend_outfit", recommend_outfit)
     graph.add_node("chat_reply", chat_reply)
 
@@ -39,10 +41,11 @@ def get_workflow():
         "query_rewriter",
         _route_by_intent,
         {
-            "recommend": "recommend_outfit",
+            "recommend": "retrieve_context",
             "chat": "chat_reply",
         },
     )
+    graph.add_edge("retrieve_context", "recommend_outfit")
     graph.add_edge("recommend_outfit", END)
     graph.add_edge("chat_reply", END)
 

@@ -17,6 +17,7 @@ class OutfitState(TypedDict, total=False):
         analysis: 形象/必要信息文本（体型/肤色/脸型/当前穿着/场合线索，供推荐节点 prompt）。
         rewritten_query: 改写后的检索查询（LLM 改写，供检索节点消费；chat 原样透传）。
         rewrite_keywords: 改写提取的关键检索词列表。
+        rag_context: 在线召回得到的参考知识（"【参考知识】\n- ..."，可空串）。
         suggestion: 最终回复文本（推荐建议或闲聊回复）。
     """
 
@@ -30,4 +31,5 @@ class OutfitState(TypedDict, total=False):
     analysis: str
     rewritten_query: str
     rewrite_keywords: list[str]
+    rag_context: str
     suggestion: str

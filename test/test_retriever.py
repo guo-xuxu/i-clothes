@@ -9,6 +9,7 @@ import pytest
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from app.graph.nodes.retrieve_context import retrieve_context as retriever_node  # noqa: E402
 from app.knowledge.retrieve import graph_store, retriever, vector_store  # noqa: E402
 from app.repositories.model_repo import ModelRepository  # noqa: E402
 
@@ -119,3 +120,46 @@ def test_retrieve_hybrid(fake_graph, monkeypatch):
     assert "婚礼 → 适合 → 正式" in ctx       # 图路
     assert "婚礼场合适合正式着装" in ctx      # 向量路（维度过滤后保留）
     assert "无关内容" not in ctx             # score 阈值 + 维度过滤剔除
+
+
+# ---------------------------------------------------------------------------
+# retrieve_context 节点（mock retriever.retrieve）
+# ---------------------------------------------------------------------------
+
+def test_node_skips_chat_intent(monkeypatch):
+    called = []
+
+    async def _fake(**kwargs):
+        called.append(1)
+        return "不应调用"
+
+    monkeypatch.setattr(retriever, "retrieve", _fake)
+
+    out = asyncio.run(retriever_node(
+        {"intent_detail": "chat", "rewritten_query": "你好呀", "rewrite_keywords": []}))
+    assert out["rag_context"] == ""
+    assert called == []
+
+
+def test_node_calls_retriever(monkeypatch):
+    async def _fake(query, **kwargs):
+        return "【参考知识】\n- 婚礼 → 适合 → 正式"
+
+    monkeypatch.setattr(retriever, "retrieve", _fake)
+
+    out = asyncio.run(retriever_node(
+        {"intent_detail": "outfit", "rewritten_query": "婚礼 正装 穿搭",
+         "rewrite_keywords": ["婚礼", "正装"], "dimension": "场合与季节",
+         "photo_type": "unknown"}))
+    assert "婚礼" in out["rag_context"]
+
+
+def test_node_fails_open(monkeypatch):
+    async def _boom(query, **kwargs):
+        raise RuntimeError("召回失败")
+
+    monkeypatch.setattr(retriever, "retrieve", _boom)
+
+    out = asyncio.run(retriever_node(
+        {"intent_detail": "style", "rewritten_query": "风格", "rewrite_keywords": []}))
+    assert out["rag_context"] == ""

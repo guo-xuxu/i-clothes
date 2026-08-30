@@ -11,6 +11,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from app.api.routers import agent  # noqa: E402
+from app.knowledge.retrieve import retriever as knowledge_retriever  # noqa: E402
 from app.repositories.model_repo import ModelRepository  # noqa: E402
 
 
@@ -30,6 +31,11 @@ def client(monkeypatch):
     monkeypatch.setattr(ModelRepository, "get_deepseek", staticmethod(lambda: FakeModel("助手回复")))
     monkeypatch.setattr(ModelRepository, "get_qianwen_vl", staticmethod(
         lambda: FakeModel('{"intent": "outfit", "dimension": "场合与季节", "photo_type": "full_body", "info": {}}')))
+    # 在线召回不触真实图谱/embedding：mock 为空上下文
+    async def _no_retrieve(**kwargs):
+        return ""
+
+    monkeypatch.setattr(knowledge_retriever, "retrieve", _no_retrieve)
     app = FastAPI()
     app.include_router(agent.router)
     return TestClient(app)

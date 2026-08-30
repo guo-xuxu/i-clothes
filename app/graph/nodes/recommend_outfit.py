@@ -17,7 +17,8 @@ RECOMMEND_PROMPT = """你是一名专业的穿搭顾问。你会收到一份对�
 【历史对话】中的信息给出建议，并在开头加一句"没有照片的情况下，我先按文字描述
 给你参考建议"。
 
-回答要具体、可执行，紧扣前面的信息，避免空泛的描述。"""
+回答要具体、可执行，紧扣前面的信息，避免空泛的描述。
+如果提供了【参考知识】，请优先参考其中的专业信息；若与用户需求无关则忽略。"""
 
 # 最多携带的历史用户消息条数作为上下文
 MAX_CONTEXT = 6
@@ -41,6 +42,9 @@ async def recommend_outfit(state: OutfitState) -> OutfitState:
     user_message = f"【形象分析】\n{analysis or '（无，用户未上传照片或未提取到信息）'}\n\n【用户需求】\n{user_need}\n\n"
     if history_text:
         user_message += f"【历史对话】\n{history_text}\n\n"
+    rag = (state.get("rag_context") or "").strip()
+    if rag:
+        user_message += f"【参考知识】\n{rag}\n\n"
     user_message += "请基于以上信息给出穿搭建议。"
 
     messages = [
