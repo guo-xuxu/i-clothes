@@ -1,5 +1,7 @@
 package com.iclothes.agent;
 
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -33,7 +35,7 @@ class PythonAgentClientTest {
     private PythonAgentClient client(RestClient.Builder builder, AppProperties p) {
         RestClient chat = builder.baseUrl(p.getAgent().getBaseUrl()).build();
         RestClient health = RestClient.builder().baseUrl(p.getAgent().getBaseUrl()).build();
-        return new PythonAgentClient(chat, health);
+        return new PythonAgentClient(chat, health, p);
     }
 
     @Test
@@ -111,7 +113,7 @@ class PythonAgentClientTest {
         AppProperties p = props();
         RestClient chat = RestClient.builder().baseUrl(p.getAgent().getBaseUrl()).build();
         RestClient health = healthBuilder.baseUrl(p.getAgent().getBaseUrl()).build();
-        PythonAgentClient client = new PythonAgentClient(chat, health);
+        PythonAgentClient client = new PythonAgentClient(chat, health, p);
 
         // HTTP 层抛 I/O 异常（真实连接失败的等价物）→ client 侧包装为 ResourceAccessException → catch 分支 → false
         server.expect(once(), requestTo("http://127.0.0.1:8000/api/health"))
@@ -120,5 +122,73 @@ class PythonAgentClientTest {
         // 不抛异常、返回 false（若异常漏出，本断言直接失败）
         assertThat(client.healthQianwenConfigured()).isFalse();
         server.verify();
+    }
+
+    // ------------------------------------------------------------------
+    // 流式（SSE）：本地 JDK HttpServer 供脚本化事件
+    // ------------------------------------------------------------------
+
+    private static com.sun.net.httpserver.HttpServer sseServer(
+            String sseBody, int status) throws Exception {
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                new InetSocketAddress(0), 0);
+        server.createContext("/api/agent/chat/stream", exchange -> {
+            byte[] body = sseBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(status, status == 200 ? body.length : -1);
+            if (status == 200) {
+                exchange.getResponseBody().write(body);
+            }
+            exchange.close();
+        });
+        server.start();
+        return server;
+    }
+
+    private record StreamCapture(java.util.List<String> deltas, java.util.List<String> intents,
+                                 java.util.List<Throwable> errors) {}
+
+    private StreamCapture runStream(String sseBody, int status) throws Exception {
+        com.sun.net.httpserver.HttpServer server = sseServer(sseBody, status);
+        try {
+            AppProperties p = props();
+            p.getAgent().setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+            PythonAgentClient c = client(RestClient.builder(), p);
+            StreamCapture cap = new StreamCapture(new java.util.ArrayList<>(),
+                    new java.util.ArrayList<>(), new java.util.ArrayList<>());
+            c.streamChat("hi", List.of(), List.of(), new PythonAgentClient.StreamHandler() {
+                @Override public void onDelta(String d) { cap.deltas().add(d); }
+                @Override public void onDone(String i) { cap.intents().add(i); }
+                @Override public void onError(Throwable t) { cap.errors().add(t); }
+            });
+            return cap;
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void streamChatForwardsDeltasAndDone() throws Exception {
+        StreamCapture cap = runStream(
+                "data: {\"delta\":\"你\"}\n\n"
+                        + "data: {\"delta\":\"好\"}\n\n"
+                        + "data: {\"done\":true,\"intent\":\"recommend\"}\n\n", 200);
+        assertThat(cap.deltas()).containsExactly("你", "好");
+        assertThat(cap.intents()).containsExactly("recommend");
+        assertThat(cap.errors()).isEmpty();
+    }
+
+    @Test
+    void streamChatErrorEventInvokesOnError() throws Exception {
+        StreamCapture cap = runStream("data: {\"error\":\"LLM 超时\"}\n\n", 200);
+        assertThat(cap.deltas()).isEmpty();
+        assertThat(cap.errors()).hasSize(1);
+        assertThat(cap.errors().get(0).getMessage()).isEqualTo("LLM 超时");
+    }
+
+    @Test
+    void streamChatNon200InvokesOnError() throws Exception {
+        StreamCapture cap = runStream("", 500);
+        assertThat(cap.errors()).hasSize(1);
     }
 }

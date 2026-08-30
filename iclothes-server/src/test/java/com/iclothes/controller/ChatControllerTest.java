@@ -18,12 +18,16 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ChatController.class)
@@ -192,5 +196,31 @@ class ChatControllerTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.detail").value("服务器内部错误"))
                 .andExpect(content().string(not(containsString("Exception"))));
+    }
+
+    // ------------------------------------------------------------------
+    // 流式端点 /api/chat/stream
+    // ------------------------------------------------------------------
+
+    @Test
+    void chatStreamRejectsEmptyMessage() throws Exception {
+        when(rateLimiter.allow(any())).thenReturn(true);
+        mvc.perform(post("/api/chat/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"\",\"images\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("消息内容不能为空"));
+        verify(chatService, never()).chatStream(any(), anyString(), anyList(), any());
+    }
+
+    @Test
+    void chatStreamStartsAsyncEmitter() throws Exception {
+        when(rateLimiter.allow(any())).thenReturn(true);
+        mvc.perform(post("/api/chat/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"你好\",\"images\":[]}"))
+                .andExpect(request().asyncStarted());
+        verify(chatService).chatStream(any(), eq("你好"), anyList(),
+                any(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.class));
     }
 }
