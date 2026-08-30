@@ -5,6 +5,7 @@
 - 业务层在 app/services/，核心工作流在 app/graph/。
 - 数据访问层在 app/repositories/（模型、未来的 SQL/向量/知识图谱）。
 """
+import logging
 import os
 import socket
 import subprocess
@@ -15,6 +16,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+# 应用日志（意图分析/在线召回等 INFO 可见）；uvicorn 默认不显示应用 logger
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 # Phoenix tracing：官方 register() 自动配置 OTLP 导出并挂载 instrumentor
 from phoenix.otel import register
