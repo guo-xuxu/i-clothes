@@ -30,4 +30,7 @@ async def retrieve_context(state: OutfitState) -> OutfitState:
     except Exception as exc:  # noqa: BLE001 - fail-open
         logger.warning("在线召回失败（返回空上下文）: %s", exc)
         return {"rag_context": ""}
+    logger.info("在线召回: dimension=%s photo_type=%s hits=%d chars=%d",
+                state.get("dimension"), state.get("photo_type"),
+                ctx.count("\n- ") + (1 if ctx else 0), len(ctx))
     return {"rag_context": ctx}
