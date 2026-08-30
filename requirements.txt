@@ -12,3 +12,5 @@ openai>=1.61.0
 httpx==0.28.1
 arize-phoenix-otel==0.7.1
 agno
+# 知识库向量存储（版本与本地一致，Chroma 数据文件对版本敏感）
+chromadb==1.5.9
