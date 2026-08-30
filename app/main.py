@@ -113,10 +113,11 @@ app.include_router(agent.router)
 app.include_router(health.router)
 app.include_router(knowledge.router)
 
-# 静态资源：Vue 构建产物（/assets）或旧版原生前端（/static）
+# 静态资源：Vue 构建产物（/assets）或旧版原生前端（/static）。
+# 部署兼容：Python 容器只跑 API（前端由 Java 伺服），frontend 目录不存在时跳过挂载。
 if DIST_READY:
     app.mount(
         "/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets"
     )
-else:
+elif FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
