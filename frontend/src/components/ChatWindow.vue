@@ -13,7 +13,11 @@ const emit = defineEmits(['send'])
 const listEl = ref(null)
 
 watch(
-  () => props.messages.length,
+  () => {
+    // 消息数量或最后一条内容长度变化都滚动到底（流式逐 token 追加时跟随）
+    const last = props.messages[props.messages.length - 1]
+    return last ? last.content.length : 0
+  },
   async () => {
     await nextTick()
     if (listEl.value) {

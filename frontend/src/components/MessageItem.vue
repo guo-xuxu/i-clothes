@@ -19,6 +19,19 @@ function formatTime(ts) {
 }
 </script>
 
+<style scoped>
+.stream-cursor {
+  display: inline-block;
+  color: #409eff;
+  animation: stream-blink 0.8s steps(1) infinite;
+}
+@keyframes stream-blink {
+  50% {
+    opacity: 0;
+  }
+}
+</style>
+
 <template>
   <div class="message-row" :class="isUser ? 'user' : 'assistant'">
     <div class="message-avatar" :class="isUser ? 'user' : 'assistant'">
@@ -36,7 +49,9 @@ function formatTime(ts) {
           alt="附件"
         />
       </div>
-      <div class="message-bubble">{{ message.content }}</div>
+      <div class="message-bubble">
+        {{ message.content }}<span v-if="message.streaming" class="stream-cursor">▌</span>
+      </div>
       <div class="message-meta">
         <el-tag
           v-if="showIntent"

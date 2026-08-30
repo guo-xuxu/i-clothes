@@ -147,6 +147,18 @@
     `recommend_outfit` prompt 注入【参考知识】段（无关则忽略）
 - 可观测：`app/main.py` 启用应用 INFO 日志（意图分析/在线召回/改写调用在服务端控制台可见）
 
+### Added
+- **流式输出（SSE）**：
+  - Python `POST /api/agent/chat/stream`：`workflow.astream(stream_mode=["messages","updates"])`
+    逐 token 输出（仅转发生成节点 chat_reply/recommend_outfit），done 事件携带 intent；
+    intent 从 query_analyzer 的 updates 输出获取（不重跑工作流）
+  - Java `POST /api/chat/stream`：SseEmitter + JDK `java.net.http.HttpClient` 流式代理，
+    虚拟线程执行；done 后按非流式相同事务落库并推送 `{conversation_id, title}` 元数据事件；
+    错误/断开 → completeWithError
+  - 前端：`api.js.streamChat`（fetch + ReadableStream 解析 SSE）+ `App.vue` 打字机渲染
+    （流式光标、内容滚动跟随），会话绑定用元数据事件
+  - 兼容：原 `POST /api/chat` / `POST /api/agent/chat` 保留
+
 **变更原因**：完成 MVP 前 3 步（项目结构、后端、前端）。采用 LangGraph
 便于后续扩展 DeepSeek 识别/生图、季节/主题节点；模型调用集中封装，换模型只改一处。
 MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信息（SQL）、

@@ -74,31 +74,44 @@ async function handleSend({ text, images }) {
   if (sending.value) return
   sending.value = true
 
-  // 乐观更新：先显示用户消息
+  // 乐观更新：先显示用户消息，再放一个流式占位气泡
   messages.value.push({ role: 'user', content: text, images })
+  const assistantMsg = { role: 'assistant', content: '', intent: '', streaming: true }
+  messages.value.push(assistantMsg)
   try {
-    const result = await api.chat({
+    let full = ''
+    let intent = 'chat'
+    let gotMeta = false
+    for await (const ev of api.streamChat({
       conversation_id: activeId.value,
       message: text,
       images,
-    })
-    // 新会话时绑定返回的会话 id
-    if (result.conversation_id !== activeId.value) {
-      activeId.value = result.conversation_id
+    })) {
+      if (ev.delta != null) {
+        full += ev.delta
+        assistantMsg.content = full
+      } else if (ev.conversation_id != null) {
+        gotMeta = true
+        if (ev.conversation_id !== activeId.value) {
+          activeId.value = ev.conversation_id // 新会话绑定返回的会话 id
+        }
+        if (ev.title) activeTitle.value = ev.title
+      } else if (ev.done) {
+        intent = ev.intent
+      }
     }
-    activeTitle.value = result.title
-    messages.value.push({
-      role: 'assistant',
-      content: result.reply,
-      intent: result.intent,
-    })
+    assistantMsg.streaming = false
+    assistantMsg.intent = intent
+    assistantMsg.content = full || '(空回复)'
+    if (!gotMeta) {
+      // 兜底：没收到元数据事件也刷新列表（会话已在服务端创建）
+      activeId.value = null
+    }
     await refreshList()
   } catch (e) {
-    messages.value.push({
-      role: 'assistant',
-      content: `出错了：${e.message}`,
-      intent: '',
-    })
+    assistantMsg.streaming = false
+    assistantMsg.content = `出错了：${e.message}`
+    assistantMsg.intent = ''
   } finally {
     sending.value = false
   }
