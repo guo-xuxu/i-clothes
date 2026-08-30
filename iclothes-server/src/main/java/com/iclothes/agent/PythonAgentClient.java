@@ -119,8 +119,10 @@ public class PythonAgentClient {
             HttpResponse<Stream<String>> resp = client.send(
                     request, HttpResponse.BodyHandlers.ofLines());
             if (resp.statusCode() != 200) {
+                // 带上响应体明细（如 FastAPI 422 的校验错误），便于直接定位
+                String detail = resp.body().limit(300).collect(java.util.stream.Collectors.joining());
                 handler.onError(new IllegalStateException(
-                        "Python 流式接口返回 " + resp.statusCode()));
+                        "Python 流式接口返回 " + resp.statusCode() + ": " + detail));
                 return;
             }
             try (Stream<String> lines = resp.body()) {

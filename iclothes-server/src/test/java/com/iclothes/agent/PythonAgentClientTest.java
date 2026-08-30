@@ -169,13 +169,39 @@ class PythonAgentClientTest {
 
     @Test
     void streamChatForwardsDeltasAndDone() throws Exception {
-        StreamCapture cap = runStream(
-                "data: {\"delta\":\"你\"}\n\n"
-                        + "data: {\"delta\":\"好\"}\n\n"
-                        + "data: {\"done\":true,\"intent\":\"recommend\"}\n\n", 200);
-        assertThat(cap.deltas()).containsExactly("你", "好");
-        assertThat(cap.intents()).containsExactly("recommend");
-        assertThat(cap.errors()).isEmpty();
+        java.util.concurrent.atomic.AtomicReference<String> bodyRef = new java.util.concurrent.atomic.AtomicReference<>();
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                new InetSocketAddress(0), 0);
+        server.createContext("/api/agent/chat/stream", exchange -> {
+            bodyRef.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] body = ("data: {\"delta\":\"你\"}\n\n"
+                    + "data: {\"delta\":\"好\"}\n\n"
+                    + "data: {\"done\":true,\"intent\":\"recommend\"}\n\n").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            AppProperties p = props();
+            p.getAgent().setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+            PythonAgentClient c = client(RestClient.builder(), p);
+            StreamCapture cap = new StreamCapture(new java.util.ArrayList<>(),
+                    new java.util.ArrayList<>(), new java.util.ArrayList<>());
+            c.streamChat("hi", List.of(), List.of(), new PythonAgentClient.StreamHandler() {
+                @Override public void onDelta(String d) { cap.deltas().add(d); }
+                @Override public void onDone(String i) { cap.intents().add(i); }
+                @Override public void onError(Throwable t) { cap.errors().add(t); }
+            });
+            System.out.println("STREAM_BODY=" + bodyRef.get());
+            assertThat(bodyRef.get()).isEqualTo("{\"message\":\"hi\",\"images\":[],\"history\":[]}");
+            assertThat(cap.deltas()).containsExactly("你", "好");
+            assertThat(cap.intents()).containsExactly("recommend");
+            assertThat(cap.errors()).isEmpty();
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
