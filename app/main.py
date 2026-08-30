@@ -51,7 +51,11 @@ def ensure_phoenix_server() -> None:
     其依赖链（pydantic-ai-slim[openai]→openai>=2.29）与 langchain-openai
     （openai<2）冲突，生产环境不装；追踪（arize-phoenix-otel）仍注册。
     """
-    if importlib.util.find_spec("phoenix.server.main") is None:
+    try:
+        phoenix_server_installed = importlib.util.find_spec("phoenix.server") is not None
+    except ModuleNotFoundError:
+        phoenix_server_installed = False
+    if not phoenix_server_installed:
         print("[Phoenix] 未安装 arize-phoenix（服务器本体），跳过自动启动（追踪注册仍生效）")
         return
     if _port_open(PHOENIX_UI_PORT) and _port_open(PHOENIX_OTLP_PORT):
