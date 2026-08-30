@@ -16,5 +16,7 @@ httpx==0.28.1
 # 钉 16.x：17.x+ 依赖 pydantic-ai-slim[extras]→openai>=2.29，与 langchain-openai 0.2.14（openai<2）冲突
 arize-phoenix==16.6.0
 arize-phoenix-otel==0.17.1
+# pydantic-ai 锁 1.x：arize-phoenix 16.6.0 构建期依赖；2.x 的 openai extra 要求 openai>=2.29 会撞 langchain-openai
+pydantic-ai-slim<2
 # 知识库向量存储（版本与本地一致，Chroma 数据文件对版本敏感）
 chromadb==1.5.9
