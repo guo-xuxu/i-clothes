@@ -1,0 +1,14 @@
+# 构建上下文排除：防止巨大目录被 docker build 发送到守护进程
+# 注意：frontend/dist 和 iclothes-server/target/ 是 Dockerfile 的 COPY 来源，绝不能排除！
+.git
+.conda/
+frontend/node_modules/
+logs/
+.superpowers/
+.workbuddy/
+.env
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.idea/
+.vscode/

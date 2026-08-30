@@ -37,6 +37,9 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
     ports:
       - "8000:8000"
+    volumes:
+      # 知识库数据（graph.json + Chroma）持久化：容器重建不丢、新入库数据可保留
+      - knowledge-data:/app/app/knowledge/data
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')\""]
       interval: 10s
@@ -68,3 +71,4 @@ services:
 
 volumes:
   pgdata:
+  knowledge-data:
