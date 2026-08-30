@@ -65,11 +65,12 @@ export const api = {
       while ((idx = buf.indexOf('\n\n')) !== -1) {
         const block = buf.slice(0, idx)
         buf = buf.slice(idx + 2)
-        const line = block.split('\n').find((l) => l.startsWith('data: '))
+        // 兼容 "data: {...}"（Python）与 "data:{...}"（Spring SseEmitter，无空格）
+        const line = block.split('\n').find((l) => l.trimStart().startsWith('data:'))
         if (!line) continue
         let ev
         try {
-          ev = JSON.parse(line.slice(6))
+          ev = JSON.parse(line.slice(line.indexOf(':') + 1).trim())
         } catch {
           continue
         }
