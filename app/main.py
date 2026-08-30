@@ -5,6 +5,7 @@
 - 业务层在 app/services/，核心工作流在 app/graph/。
 - 数据访问层在 app/repositories/（模型、未来的 SQL/向量/知识图谱）。
 """
+import importlib.util
 import logging
 import os
 import socket
@@ -45,7 +46,14 @@ def ensure_phoenix_server() -> None:
 
     注意：Phoenix 保持常驻，不随 uvicorn 退出而终止，避免 --reload
     热重载时误杀 Phoenix 导致端口冲突。
+
+    部署兼容：容器镜像未安装 arize-phoenix（服务器本体）时优雅跳过——
+    其依赖链（pydantic-ai-slim[openai]→openai>=2.29）与 langchain-openai
+    （openai<2）冲突，生产环境不装；追踪（arize-phoenix-otel）仍注册。
     """
+    if importlib.util.find_spec("phoenix.server.main") is None:
+        print("[Phoenix] 未安装 arize-phoenix（服务器本体），跳过自动启动（追踪注册仍生效）")
+        return
     if _port_open(PHOENIX_UI_PORT) and _port_open(PHOENIX_OTLP_PORT):
         print(f"[Phoenix] 已在运行: http://localhost:{PHOENIX_UI_PORT}")
         return
