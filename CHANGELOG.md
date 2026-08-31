@@ -13,7 +13,7 @@
 
 ---
 
-## [Unreleased] - 开发中
+## [1.0.0] - 2026-08-31（v1 发布：RAG 在线检索 + 流式输出 + 双服务生产部署）
 
 ### Added
 - 创建 PRD.md - 产品需求文档
@@ -159,6 +159,31 @@
     （流式光标、内容滚动跟随），会话绑定用元数据事件
   - 兼容：原 `POST /api/chat` / `POST /api/agent/chat` 保留
 
+### Fixed
+- **Java→Python 流式 body 丢失（FastAPI 422 missing body）**：JDK `HttpClient` 默认协商
+  HTTP/2（ALPN），而 uvicorn/h11 仅支持 HTTP/1.1，协商异常时请求体被丢弃；
+  客户端显式 `version(HTTP_1_1)` 修复（非流式 RestClient 本就是 HTTP/1.1 故未触发）
+- **流式结束事件缺失**：Java 代理收到 Python `done` 后只落库发元数据、未转发 `done`
+  事件，前端判定"流式响应未正常结束"而报错；`onDone` 现在先转发 `{done, intent}`
+  再发 `{conversation_id, title}` 元数据
+- **前端文字"卡在光标"（响应式更新失效）**：流式占位气泡是 push 前的原始对象，
+  直接改其属性不触发 Vue 响应式；改为通过 `messages.value[lastIdx]`（reactive 数组
+  索引）更新
+- **前端 SSE 解析兼容 Spring 无空格格式**：Spring SseEmitter 输出 `data:{...}`
+  （无空格），解析器按 `data:` 前缀 lenient 匹配，Python `data: {...}` 与
+  Spring `data:{...}` 均兼容
+
+### Changed
+- **生产部署（阿里云 ECS）**：Docker compose 四件套（pg/redis/python/java）上线，
+  公网 `http://47.103.144.20:8080`；Docker Hub 不可达 → DaoCloud 镜像加速；
+  pip 走阿里云 PyPI 镜像；`.env` 管理密钥；知识库数据挂卷 `knowledge-data` 持久化
+- **依赖收敛（部署红线）**：移除 agno 与 arize-phoenix 服务器本体（与 langchain-openai
+  的 openai<2 约束物理冲突，Phoenix 追踪保留）；`main.py` 优雅跳过缺失的追踪服务器；
+  前端 dist 缺失时跳过静态挂载（Python 容器仅服务 API）
+- 知识库数据 `app/knowledge/data/` 曾误入 git 跟踪（`7e241b1`），构建产物保持
+  gitignore，可经 `POST /api/knowledge/import` 全量重建（46 篇 / 1277 节点 /
+  实体向量 1277 / chunk 向量 89）
+
 **变更原因**：完成 MVP 前 3 步（项目结构、后端、前端）。采用 LangGraph
 便于后续扩展 DeepSeek 识别/生图、季节/主题节点；模型调用集中封装，换模型只改一处。
 MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信息（SQL）、
@@ -215,28 +240,28 @@ MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信�
 
 ## 版本规划
 
-### v0.1.0 (计划中)
-**目标**：实现 MVP 基础功能
-- 后端框架搭建（FastAPI）
-- 前端上传界面
-- 千问 API 集成
-- Docker 配置
-- 部署脚本
+### v1.0.0 ✅ 已发布（2026-08-31）
+**目标**：对话式 MVP + 双服务架构 + RAG 知识检索 + 流式输出，生产部署上线
+- [x] 后端框架搭建（FastAPI + LangGraph）与前端对话界面（Vue3）
+- [x] 双服务架构（Java 业务后端 + Python 无状态 Agent）与 Docker compose 四件套
+- [x] 意图分析（5 类意图 + 9 维度 + 照片类型）与查询改写
+- [x] 知识图谱 + 向量混合检索（46 篇文档 / 1277 节点，在线召回接入推荐）
+- [x] 流式输出（SSE：Python → Java 代理 → 前端打字机）
+- [x] 生产部署（阿里云 ECS，公网可访问）
 
-### v0.2.0 (计划中)
-**目标**：完整推荐功能
-- DeepSeek API 集成
-- 图片识别功能
+### v1.1.0 (计划中)
+**目标**：检索质量与体验优化
+- 检索调优：top-k / 距离阈值 / 改写策略按维度差异化
+- 推荐质量评估与提示词迭代
+- 多模态识别增强（照片信息抽取接入推荐）
+
+### v2.0.0 (计划中)
+**目标**：完整推荐与场景增强
 - 生图功能
-- 结果展示优化
-
-### v0.3.0 (计划中)
-**目标**：场景增强
-- 季节判断
-- 主题穿搭
-- UI/UX 优化
+- 季节判断、主题穿搭
+- 用户画像与历史记录
 
 ---
 
 **文档维护**：每次代码提交前更新此文档  
-**最后更新**：2026-08-27
+**最后更新**：2026-08-31
