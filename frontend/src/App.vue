@@ -76,8 +76,9 @@ async function handleSend({ text, images }) {
 
   // 乐观更新：先显示用户消息，再放一个流式占位气泡
   messages.value.push({ role: 'user', content: text, images })
-  const assistantMsg = { role: 'assistant', content: '', intent: '', streaming: true }
-  messages.value.push(assistantMsg)
+  messages.value.push({ role: 'assistant', content: '', intent: '', streaming: true })
+  // 必须通过 reactive 数组访问更新，直接改原始对象不会触发 Vue 响应式更新（文字会"卡在光标"）
+  const lastIdx = messages.value.length - 1
   try {
     let full = ''
     let intent = 'chat'
@@ -89,7 +90,7 @@ async function handleSend({ text, images }) {
     })) {
       if (ev.delta != null) {
         full += ev.delta
-        assistantMsg.content = full
+        messages.value[lastIdx].content = full
       } else if (ev.conversation_id != null) {
         gotMeta = true
         if (ev.conversation_id !== activeId.value) {
@@ -100,18 +101,18 @@ async function handleSend({ text, images }) {
         intent = ev.intent
       }
     }
-    assistantMsg.streaming = false
-    assistantMsg.intent = intent
-    assistantMsg.content = full || '(空回复)'
+    messages.value[lastIdx].streaming = false
+    messages.value[lastIdx].intent = intent
+    messages.value[lastIdx].content = full || '(空回复)'
     if (!gotMeta) {
       // 兜底：没收到元数据事件也刷新列表（会话已在服务端创建）
       activeId.value = null
     }
     await refreshList()
   } catch (e) {
-    assistantMsg.streaming = false
-    assistantMsg.content = `出错了：${e.message}`
-    assistantMsg.intent = ''
+    messages.value[lastIdx].streaming = false
+    messages.value[lastIdx].content = `出错了：${e.message}`
+    messages.value[lastIdx].intent = ''
   } finally {
     sending.value = false
   }
