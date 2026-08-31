@@ -14,6 +14,7 @@ import com.iclothes.agent.AgentChatResponse;
 import com.iclothes.agent.PythonAgentClient;
 import com.iclothes.dto.ChatResponse;
 import com.iclothes.dto.ConversationDto;
+import com.iclothes.entity.Conversation;
 import com.iclothes.entity.Message;
 import com.iclothes.exception.ApiException;
 
@@ -50,12 +51,10 @@ public class ChatService {
         this.chatExecutor = chatExecutor;
     }
 
-    public ChatResponse chat(String conversationId, String message, List<String> images) {
-        // 1. 会话解析：id 无效/不存在 → 新建（消费 create() 落库的 id，不自造随机 id，
-        //    否则后续 append/trim/setTitle 全部命中不存在的 conversation，触发 FK 违规）
-        UUID parsed = parseOrNull(conversationId);
-        boolean isNew = parsed == null || conversations.get(parsed) == null;
-        UUID cid = isNew ? UUID.fromString(conversations.create().getId()) : parsed;
+    public ChatResponse chat(Long userId, String conversationId, String message, List<String> images) {
+        // 1. 会话解析：id 无效/不存在 → 新建；存在但不属于当前用户 → 404（防越权）
+        Resolved r = resolveConversation(userId, conversationId);
+        UUID cid = r.cid();
 
         String lockKey = LOCK_PREFIX + cid + LOCK_SUFFIX;
 
@@ -83,7 +82,7 @@ public class ChatService {
                 conversations.trim(cid);
 
                 String t = conversations.getTitle(cid);
-                if (isNew && message != null && !message.isBlank()) {
+                if (r.isNew() && message != null && !message.isBlank()) {
                     String clean = message.trim().replace("\n", " ");
                     t = clean.substring(0, Math.min(TITLE_MAX, clean.length()));
                     conversations.setTitle(cid, t);
@@ -106,15 +105,33 @@ public class ChatService {
         }
     }
 
+    /** 会话解析结果：cid + 是否新建。 */
+    private record Resolved(UUID cid, boolean isNew) {}
+
+    /** 解析会话：id 无效/不存在 → 新建；存在但不属于当前用户 → 404（防越权）。 */
+    private Resolved resolveConversation(Long userId, String conversationId) {
+        UUID parsed = parseOrNull(conversationId);
+        if (parsed == null) {
+            return new Resolved(UUID.fromString(conversations.create(userId).getId()), true);
+        }
+        Conversation c = conversations.findById(parsed);
+        if (c == null) {
+            return new Resolved(UUID.fromString(conversations.create(userId).getId()), true);
+        }
+        if (!userId.equals(c.getUserId())) {
+            throw new ApiException(404, "会话不存在");
+        }
+        return new Resolved(parsed, false);
+    }
+
     /**
      * 流式聊天：会话/锁/历史与非流式一致；虚拟线程内转发 Python SSE 到 SseEmitter，
      * 收到 done 后按非流式相同事务落库并 complete。校验（400/429/503）在调用方抛错。
      */
-    public void chatStream(String conversationId, String message, List<String> images,
+    public void chatStream(Long userId, String conversationId, String message, List<String> images,
                            org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter) {
-        UUID parsed = parseOrNull(conversationId);
-        boolean isNew = parsed == null || conversations.get(parsed) == null;
-        UUID cid = isNew ? UUID.fromString(conversations.create().getId()) : parsed;
+        Resolved r = resolveConversation(userId, conversationId);
+        UUID cid = r.cid();
 
         String lockKey = LOCK_PREFIX + cid + LOCK_SUFFIX;
         if (!sessionLock.tryAcquire(lockKey, LOCK_WAIT_MS)) {
@@ -145,7 +162,7 @@ public class ChatService {
                             @Override
                             public void onDone(String intent) {
                                 String title = persistStream(
-                                        cid, message, images, reply.toString(), intent, isNew);
+                                        cid, message, images, reply.toString(), intent, r.isNew());
                                 try {
                                     // 结束事件必须先转发：前端据此判定流完整结束
                                     // （否则前端抛"流式响应未正常结束"，消息显示为出错）

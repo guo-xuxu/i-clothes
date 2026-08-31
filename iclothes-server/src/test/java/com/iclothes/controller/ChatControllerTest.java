@@ -47,7 +47,7 @@ class ChatControllerTest {
     @Test
     void emptyMessageAndImagesRejected() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"\",\"images\":[]}"))
                 .andExpect(status().isBadRequest())
@@ -57,7 +57,7 @@ class ChatControllerTest {
     @Test
     void invalidImageFormatRejected() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"hi\",\"images\":[\"data:image/gif;base64,AAAA\"]}"))
                 .andExpect(status().isBadRequest())
@@ -70,7 +70,7 @@ class ChatControllerTest {
         String images = "["
                 + "\"data:image/png;base64,AAAA\",\"data:image/png;base64,BBBB\","
                 + "\"data:image/png;base64,CCCC\",\"data:image/png;base64,DDDD\"]";
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"hi\",\"images\":" + images + "}"))
                 .andExpect(status().isBadRequest())
@@ -80,16 +80,16 @@ class ChatControllerTest {
     @Test
     void validPngImageAccepted() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        when(chatService.chat(any(), any(), anyList()))
+        when(chatService.chat(any(), any(), any(), anyList()))
                 .thenReturn(new ChatResponse("abc", "回复", "chat", "新对话"));
         String url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"看看这张照片\",\"images\":[\"" + url + "\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.conversation_id").value("abc"))
                 .andExpect(jsonPath("$.reply").value("回复"));
-        verify(chatService).chat(any(), any(), argThat(images -> images.equals(List.of(url))));
+        verify(chatService).chat(any(), any(), any(), argThat(images -> images.equals(List.of(url))));
     }
 
     @Test
@@ -97,7 +97,7 @@ class ChatControllerTest {
         when(rateLimiter.allow(any())).thenReturn(true);
         // 7MB base64 载荷 ≈ 5.25MB 解码后字节数 > 5MB 限制（上限来自 AppProperties 默认 maxSizeMb=5）
         String base64 = "A".repeat(7 * 1024 * 1024);
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"hi\",\"images\":[\"data:image/png;base64," + base64 + "\"]}"))
                 .andExpect(status().isBadRequest())
@@ -107,7 +107,7 @@ class ChatControllerTest {
     @Test
     void rateLimitedReturns429() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(false);
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"你好\",\"images\":[]}"))
                 .andExpect(status().isTooManyRequests())
@@ -118,9 +118,9 @@ class ChatControllerTest {
     void rateLimitKeyIgnoresXffByDefault() throws Exception {
         // I1：trust-x-forwarded-for 默认 false —— 带 XFF 头也必须按 remoteAddr 限流（防伪造绕过）
         when(rateLimiter.allow("127.0.0.1")).thenReturn(true);
-        when(chatService.chat(any(), any(), anyList()))
+        when(chatService.chat(any(), any(), any(), anyList()))
                 .thenReturn(new ChatResponse("abc", "回复", "chat", "新对话"));
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Forwarded-For", "203.0.113.9")
                         .content("{\"message\":\"你好\",\"images\":[]}"))
@@ -134,9 +134,9 @@ class ChatControllerTest {
         properties.getRateLimit().setTrustXForwardedFor(true);
         try {
             when(rateLimiter.allow("203.0.113.9")).thenReturn(true);
-            when(chatService.chat(any(), any(), anyList()))
+            when(chatService.chat(any(), any(), any(), anyList()))
                     .thenReturn(new ChatResponse("abc", "回复", "chat", "新对话"));
-            mvc.perform(post("/api/chat")
+            mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                             .contentType(MediaType.APPLICATION_JSON)
                             .header("X-Forwarded-For", "203.0.113.9, 10.0.0.1")
                             .content("{\"message\":\"你好\",\"images\":[]}"))
@@ -150,9 +150,9 @@ class ChatControllerTest {
     @Test
     void happyPathReturnsChatResponse() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        when(chatService.chat(any(), any(), anyList()))
+        when(chatService.chat(any(), any(), any(), anyList()))
                 .thenReturn(new ChatResponse("abc", "回复", "chat", "新对话"));
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"你好\",\"images\":[]}"))
                 .andExpect(status().isOk())
@@ -164,9 +164,9 @@ class ChatControllerTest {
     @Test
     void agentValidationErrorReturns400WithDetail() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        when(chatService.chat(any(), any(), anyList()))
+        when(chatService.chat(any(), any(), any(), anyList()))
                 .thenThrow(new AgentValidationException("校验失败"));
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"你好\",\"images\":[]}"))
                 .andExpect(status().isBadRequest())
@@ -176,9 +176,9 @@ class ChatControllerTest {
     @Test
     void agentUnavailableReturns502WithDetail() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        when(chatService.chat(any(), any(), anyList()))
+        when(chatService.chat(any(), any(), any(), anyList()))
                 .thenThrow(new AgentUnavailableException("AI 服务暂不可用，请稍后重试"));
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"你好\",\"images\":[]}"))
                 .andExpect(status().isBadGateway())
@@ -188,9 +188,9 @@ class ChatControllerTest {
     @Test
     void unexpectedErrorReturns500WithoutStacktrace() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        when(chatService.chat(any(), any(), anyList()))
+        when(chatService.chat(any(), any(), any(), anyList()))
                 .thenThrow(new RuntimeException("boom"));
-        mvc.perform(post("/api/chat")
+        mvc.perform(post("/api/chat").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"你好\",\"images\":[]}"))
                 .andExpect(status().isInternalServerError())
@@ -205,22 +205,22 @@ class ChatControllerTest {
     @Test
     void chatStreamRejectsEmptyMessage() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        mvc.perform(post("/api/chat/stream")
+        mvc.perform(post("/api/chat/stream").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"\",\"images\":[]}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("消息内容不能为空"));
-        verify(chatService, never()).chatStream(any(), anyString(), anyList(), any());
+        verify(chatService, never()).chatStream(any(), anyString(), anyString(), anyList(), any());
     }
 
     @Test
     void chatStreamStartsAsyncEmitter() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        mvc.perform(post("/api/chat/stream")
+        mvc.perform(post("/api/chat/stream").requestAttr("userId", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"你好\",\"images\":[]}"))
                 .andExpect(request().asyncStarted());
-        verify(chatService).chatStream(any(), eq("你好"), anyList(),
+        verify(chatService).chatStream(any(), any(), eq("你好"), anyList(),
                 any(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.class));
     }
 }

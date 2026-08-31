@@ -27,7 +27,7 @@ class RecommendControllerTest {
     @Test
     void noImagesRejected() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        mvc.perform(multipart("/api/recommend"))
+        mvc.perform(multipart("/api/recommend").requestAttr("userId", 1L))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("请至少上传一张照片"));
     }
@@ -36,7 +36,7 @@ class RecommendControllerTest {
     void wrongContentTypeRejected() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
         MockMultipartFile file = new MockMultipartFile("images", "a.txt", "text/plain", new byte[]{1});
-        mvc.perform(multipart("/api/recommend").file(file))
+        mvc.perform(multipart("/api/recommend").file(file).requestAttr("userId", 1L))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("不支持的图片格式：text/plain，仅支持 JPG/PNG"));
     }
@@ -44,10 +44,10 @@ class RecommendControllerTest {
     @Test
     void happyPath() throws Exception {
         when(rateLimiter.allow(any())).thenReturn(true);
-        when(chatService.chat(any(), any(), anyList()))
+        when(chatService.chat(any(), any(), any(), anyList()))
                 .thenReturn(new com.iclothes.dto.ChatResponse("c", "建议", "recommend", "t"));
         MockMultipartFile file = new MockMultipartFile("images", "a.png", "image/png", new byte[]{1, 2, 3});
-        mvc.perform(multipart("/api/recommend").file(file))
+        mvc.perform(multipart("/api/recommend").file(file).requestAttr("userId", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.suggestion").value("建议"));
     }

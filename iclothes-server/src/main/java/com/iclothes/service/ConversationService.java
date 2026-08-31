@@ -28,28 +28,35 @@ public class ConversationService {
         this.messages = messages;
     }
 
-    public ConversationDto create() {
+    public ConversationDto create(Long userId) {
         Conversation c = new Conversation(UUID.randomUUID(), "新对话",
-                LocalDateTime.now(), LocalDateTime.now());
+                LocalDateTime.now(), LocalDateTime.now(), userId);
         conversations.insert(c);
         return toDto(c, List.of());
     }
 
-    public List<ConversationSummaryDto> listSummaries() {
-        return conversations.selectSummaries();
+    public List<ConversationSummaryDto> listSummaries(Long userId) {
+        return conversations.selectSummaries(userId);
     }
 
-    public ConversationDto get(UUID id) {
+    public ConversationDto get(Long userId, UUID id) {
         Conversation c = conversations.selectById(id);
-        if (c == null) return null;
+        if (c == null || !userId.equals(c.getUserId())) return null;
         List<Message> ms = messages.selectList(new LambdaQueryWrapper<Message>()
                 .eq(Message::getConversationId, id)
                 .orderByAsc(Message::getId));
         return toDto(c, ms.stream().map(this::toMessageDto).toList());
     }
 
-    public boolean delete(UUID id) {
+    public boolean delete(Long userId, UUID id) {
+        Conversation c = conversations.selectById(id);
+        if (c == null || !userId.equals(c.getUserId())) return false;
         return conversations.deleteById(id) > 0;
+    }
+
+    /** 按 id 查会话实体（不校验归属），供 ChatService 判断「越权」用。 */
+    public Conversation findById(UUID id) {
+        return conversations.selectById(id);
     }
 
     public List<Message> lastMessages(UUID id, int limit) {

@@ -24,7 +24,7 @@ class RepositoryIT {
     @Test
     void conversationCrudAndCascade() {
         UUID cid = UUID.randomUUID();
-        conversations.insert(new Conversation(cid, "测试会话", LocalDateTime.now(), LocalDateTime.now()));
+        conversations.insert(new Conversation(cid, "测试会话", LocalDateTime.now(), LocalDateTime.now(), 1L));
 
         Message m = new Message();
         m.setConversationId(cid);
@@ -46,7 +46,7 @@ class RepositoryIT {
     @Test
     void summariesIncludePreview() {
         UUID cid = UUID.randomUUID();
-        conversations.insert(new Conversation(cid, "摘要测试", LocalDateTime.now(), LocalDateTime.now()));
+        conversations.insert(new Conversation(cid, "摘要测试", LocalDateTime.now(), LocalDateTime.now(), 1L));
         Message m = new Message();
         m.setConversationId(cid);
         m.setRole("assistant");
@@ -56,7 +56,7 @@ class RepositoryIT {
         m.setCreatedAt(LocalDateTime.now());
         messages.insert(m);
 
-        List<ConversationSummaryDto> summaries = conversations.selectSummaries();
+        List<ConversationSummaryDto> summaries = conversations.selectSummaries(1L);
         ConversationSummaryDto first = summaries.get(0);
         assertThat(first.getId()).isEqualTo(cid.toString());
         assertThat(first.getTitle()).isEqualTo("摘要测试");

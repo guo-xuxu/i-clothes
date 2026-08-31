@@ -22,7 +22,7 @@ function formatTime(ts) {
 <style scoped>
 .stream-cursor {
   display: inline-block;
-  color: #409eff;
+  color: #c0814f;
   animation: stream-blink 0.8s steps(1) infinite;
 }
 @keyframes stream-blink {

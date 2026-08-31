@@ -9,11 +9,13 @@ public class AppProperties {
     private final Agent agent = new Agent();
     private final RateLimit rateLimit = new RateLimit();
     private final Frontend frontend = new Frontend();
+    private final Jwt jwt = new Jwt();
 
     public Upload getUpload() { return upload; }
     public Agent getAgent() { return agent; }
     public RateLimit getRateLimit() { return rateLimit; }
     public Frontend getFrontend() { return frontend; }
+    public Jwt getJwt() { return jwt; }
 
     public static class Upload {
         private int maxCount = 3;
@@ -53,5 +55,14 @@ public class AppProperties {
         private String dir = "frontend/dist";
         public String getDir() { return dir; }
         public void setDir(String v) { dir = v; }
+    }
+
+    public static class Jwt {
+        private String secret = "change-me-change-me-change-me-change-me";
+        private long expireDays = 7;
+        public String getSecret() { return secret; }
+        public void setSecret(String v) { secret = v; }
+        public long getExpireDays() { return expireDays; }
+        public void setExpireDays(long v) { expireDays = v; }
     }
 }

@@ -5,6 +5,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -32,7 +33,8 @@ public class ChatController {
     }
 
     @PostMapping("/api/chat")
-    public ChatResponse chat(@RequestBody ChatRequest req, HttpServletRequest http) {
+    public ChatResponse chat(@RequestBody ChatRequest req, HttpServletRequest http,
+                             @RequestAttribute("userId") Long userId) {
         if (!rateLimiter.allow(clientIp(http))) {
             throw new ApiException(429, "请求过于频繁，请稍后重试");
         }
@@ -41,11 +43,12 @@ public class ChatController {
         if (message.isEmpty() && images.isEmpty()) {
             throw new ApiException(400, "消息内容不能为空");
         }
-        return chatService.chat(req.getConversationId(), message, images);
+        return chatService.chat(userId, req.getConversationId(), message, images);
     }
 
     @PostMapping(value = "/api/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chatStream(@RequestBody ChatRequest req, HttpServletRequest http) {
+    public SseEmitter chatStream(@RequestBody ChatRequest req, HttpServletRequest http,
+                                 @RequestAttribute("userId") Long userId) {
         if (!rateLimiter.allow(clientIp(http))) {
             throw new ApiException(429, "请求过于频繁，请稍后重试");
         }
@@ -55,7 +58,7 @@ public class ChatController {
             throw new ApiException(400, "消息内容不能为空");
         }
         SseEmitter emitter = new SseEmitter(120_000L);
-        chatService.chatStream(req.getConversationId(), message, images, emitter);
+        chatService.chatStream(userId, req.getConversationId(), message, images, emitter);
         return emitter;
     }
 

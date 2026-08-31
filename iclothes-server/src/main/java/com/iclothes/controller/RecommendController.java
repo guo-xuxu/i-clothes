@@ -5,6 +5,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -52,6 +53,7 @@ public class RecommendController {
             // @RequestParam 从表单里取参数；MultipartFile 表示上传的文件
             @RequestParam(value = "images", required = false) List<MultipartFile> images,
             @RequestParam(value = "description", defaultValue = "") String description,
+            @RequestAttribute("userId") Long userId,
             HttpServletRequest http) {
 
         // ① 限流：同一 IP 太频繁直接拒绝（429）
@@ -100,7 +102,7 @@ public class RecommendController {
         }
 
         // ⑥ 调 ChatService（conversationId 传 null，表示一次性推荐、无会话）
-        var resp = chatService.chat(null, description, urls);
+        var resp = chatService.chat(userId, null, description, urls);
         // ⑦ 只返回 AI 的回复，包装成 {"suggestion": "..."}
         return Map.of("suggestion", resp.getReply());
     }

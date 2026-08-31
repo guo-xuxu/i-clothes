@@ -1,13 +1,48 @@
 // 后端 API 封装
 const BASE = '/api'
+const TOKEN_KEY = 'iclothes_token'
+const USER_KEY = 'iclothes_user'
+
+// ---- 认证态管理（token + 用户信息，存 localStorage）----
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY)
+}
+export function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY))
+  } catch {
+    return null
+  }
+}
+export function setAuth(token, user) {
+  localStorage.setItem(TOKEN_KEY, token)
+  if (user) localStorage.setItem(USER_KEY, JSON.stringify(user))
+}
+export function clearAuth() {
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(USER_KEY)
+}
+
+// 401 统一回调：由 App 注册，用于跳回登录页
+let onUnauthorized = null
+export function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn
+}
 
 async function request(path, options = {}) {
-  const resp = await fetch(`${BASE}${path}`, options)
+  const headers = { ...(options.headers || {}) }
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const resp = await fetch(`${BASE}${path}`, { ...options, headers })
   let data = null
   try {
     data = await resp.json()
   } catch {
     // 非 JSON 响应
+  }
+  // 401：auth 接口的 401 属于"账密错误"，不触发全局跳转；其余接口视为登录失效
+  if (resp.status === 401 && !path.startsWith('/auth/') && onUnauthorized) {
+    onUnauthorized()
   }
   if (!resp.ok) {
     throw new Error((data && data.detail) || `请求失败（${resp.status}）`)
@@ -16,6 +51,21 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  // 认证
+  register: (username, password) =>
+    request('/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }),
+  login: (username, password) =>
+    request('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }),
+  me: () => request('/auth/me'),
+
   // 会话
   listConversations: () => request('/conversations'),
   createConversation: () => request('/conversations', { method: 'POST' }),
@@ -39,11 +89,17 @@ export const api = {
    * 中途错误 throw Error(detail)。
    */
   async *streamChat(payload) {
+    const headers = { 'Content-Type': 'application/json' }
+    const token = getToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
     const resp = await fetch(`${BASE}/chat/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload),
     })
+    if (resp.status === 401 && onUnauthorized) {
+      onUnauthorized()
+    }
     if (!resp.ok || !resp.body) {
       let detail = ''
       try {

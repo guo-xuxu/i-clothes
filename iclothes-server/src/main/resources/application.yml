@@ -33,6 +33,9 @@ iclothes:
     trust-x-forwarded-for: false
   frontend:
     dir: ${FRONTEND_DIST:frontend/dist}
+  jwt:
+    secret: ${JWT_SECRET:change-me-change-me-change-me-change-me}
+    expire-days: 7
 
 mybatis-plus:
   configuration:

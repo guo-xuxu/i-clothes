@@ -168,6 +168,12 @@ async def query_analyzer(state: OutfitState) -> OutfitState:
     message = (state.get("description") or "").strip()
     if images:
         analysis = await analyze_with_image(images, message)
+        # 方案 C：有图时强制走穿搭推荐路径。否则用户发图闲聊时，chat_reply（纯文本
+        # 模型）收不到图片，会回复"没收到照片"，体验错位。这里把 chat 意图升格为
+        # outfit，使 intent 映射为 recommend，走 retrieve_context → recommend_outfit，
+        # 由 recommend_outfit 消费 analysis（千问 VL 提取的体征信息）生成建议。
+        if analysis.intent == "chat":
+            analysis = analysis.model_copy(update={"intent": "outfit"})
     else:
         analysis = analyze_text(message)
     logger.info(

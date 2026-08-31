@@ -1,12 +1,18 @@
 <script setup>
 import { computed } from 'vue'
-import { Delete, MagicStick, Plus } from '@element-plus/icons-vue'
+import { Delete, MagicStick, Plus, SwitchButton } from '@element-plus/icons-vue'
 
 const props = defineProps({
   conversations: { type: Array, default: () => [] },
   activeId: { type: String, default: null },
+  user: { type: Object, default: null },
 })
-const emit = defineEmits(['new', 'select', 'remove'])
+const emit = defineEmits(['new', 'select', 'remove', 'logout'])
+
+const userInitial = computed(() => {
+  const name = props.user && props.user.username
+  return name ? name.charAt(0).toUpperCase() : '?'
+})
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -65,6 +71,16 @@ const items = computed(() =>
           <Delete />
         </el-icon>
       </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="user-info" :title="user && user.username">
+        <div class="user-avatar">{{ userInitial }}</div>
+        <span class="user-name">{{ user ? user.username : '' }}</span>
+      </div>
+      <el-icon class="logout-btn" title="退出登录" @click="emit('logout')">
+        <SwitchButton />
+      </el-icon>
     </div>
   </aside>
 </template>

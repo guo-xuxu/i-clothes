@@ -3,13 +3,16 @@ import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ConversationSidebar from './components/ConversationSidebar.vue'
 import ChatWindow from './components/ChatWindow.vue'
-import { api } from './api'
+import LoginView from './components/LoginView.vue'
+import { api, getToken, getStoredUser, clearAuth, setUnauthorizedHandler } from './api'
 
 const conversations = ref([])
 const activeId = ref(null)
 const activeTitle = ref('新对话')
 const messages = ref([])
 const sending = ref(false)
+const authed = ref(false)
+const currentUser = ref(null)
 
 async function refreshList() {
   conversations.value = await api.listConversations()
@@ -118,7 +121,23 @@ async function handleSend({ text, images }) {
   }
 }
 
-onMounted(async () => {
+function handleLoginSuccess(user) {
+  currentUser.value = user
+  authed.value = true
+  loadChats()
+}
+
+function handleLogout() {
+  clearAuth()
+  authed.value = false
+  currentUser.value = null
+  conversations.value = []
+  activeId.value = null
+  activeTitle.value = '新对话'
+  messages.value = []
+}
+
+async function loadChats() {
   try {
     await refreshList()
     if (conversations.value.length) {
@@ -129,17 +148,36 @@ onMounted(async () => {
   } catch (e) {
     ElMessage.error(e.message)
   }
+}
+
+onMounted(async () => {
+  // 401 统一跳回登录页
+  setUnauthorizedHandler(handleLogout)
+  // 有 token 先验证有效性，通过再进主界面
+  if (!getToken()) return
+  try {
+    const user = await api.me()
+    currentUser.value = user || getStoredUser()
+    authed.value = true
+  } catch (e) {
+    clearAuth()
+    return
+  }
+  await loadChats()
 })
 </script>
 
 <template>
-  <div class="app-layout">
+  <LoginView v-if="!authed" @success="handleLoginSuccess" />
+  <div v-else class="app-layout">
     <ConversationSidebar
       :conversations="conversations"
       :active-id="activeId"
+      :user="currentUser"
       @new="createNew"
       @select="selectConversation"
       @remove="removeConversation"
+      @logout="handleLogout"
     />
     <ChatWindow
       :title="activeTitle"

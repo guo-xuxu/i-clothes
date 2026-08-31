@@ -28,14 +28,14 @@ class ConversationControllerTest {
 
     @Test
     void missingConversationReturns404() throws Exception {
-        mvc.perform(get("/api/conversations/00000000-0000-0000-0000-000000000001"))
+        mvc.perform(get("/api/conversations/00000000-0000-0000-0000-000000000001").requestAttr("userId", 1L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.detail").value("会话不存在"));
     }
 
     @Test
     void deleteMissingReturns404() throws Exception {
-        mvc.perform(delete("/api/conversations/00000000-0000-0000-0000-000000000001"))
+        mvc.perform(delete("/api/conversations/00000000-0000-0000-0000-000000000001").requestAttr("userId", 1L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.detail").value("会话不存在"));
     }
@@ -53,8 +53,8 @@ class ConversationControllerTest {
                 .atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
         dto.setCreatedAt(createdEpoch);
         dto.setUpdatedAt(updatedEpoch);
-        when(service.create()).thenReturn(dto);
-        mvc.perform(post("/api/conversations"))
+        when(service.create(1L)).thenReturn(dto);
+        mvc.perform(post("/api/conversations").requestAttr("userId", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("新对话"))
                 .andExpect(jsonPath("$.created_at").value(createdEpoch))

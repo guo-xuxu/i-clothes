@@ -47,6 +47,7 @@ class ChatServiceTest {
 
     ChatService service;
     UUID cid = UUID.randomUUID();
+    Long userId = 1L;
     String lockKey = "conversation:" + cid + ":lock";
 
     @BeforeEach
@@ -57,7 +58,9 @@ class ChatServiceTest {
         lenient().when(sessionLock.tryAcquire(anyString(), eq(3000L))).thenReturn(true);
         lenient().when(agentClient.chat(anyString(), anyList(), anyList()))
                 .thenReturn(new AgentChatResponse("回复", "chat"));
-        lenient().when(conversations.get(cid)).thenReturn(new ConversationDto()); // 既有会话路径
+        Conversation existing = new Conversation();
+        existing.setUserId(userId);
+        lenient().when(conversations.findById(cid)).thenReturn(existing); // 既有会话路径
         lenient().when(conversations.lastMessages(eq(cid), anyInt())).thenReturn(List.of());
         // 真实 TransactionTemplate + mock 事务管理器：单测内无真实事务，但持久化四步仍走
         // execute 回调（与生产路径一致）
@@ -69,7 +72,7 @@ class ChatServiceTest {
     void chatOrchestratesLockAgentPersistAndRelease() {
         when(conversations.getTitle(cid)).thenReturn("旧标题");
 
-        ChatResponse resp = service.chat(cid.toString(), "你好", List.of());
+        ChatResponse resp = service.chat(userId, cid.toString(), "你好", List.of());
 
         assertThat(resp.getReply()).isEqualTo("回复");
         assertThat(resp.getIntent()).isEqualTo("chat");
@@ -88,10 +91,10 @@ class ChatServiceTest {
         String createdId = UUID.randomUUID().toString();
         ConversationDto created = new ConversationDto();
         created.setId(createdId);
-        when(conversations.create()).thenReturn(created);
+        when(conversations.create(userId)).thenReturn(created);
         when(conversations.getTitle(any(UUID.class))).thenReturn("新对话");
 
-        ChatResponse resp = service.chat(null, "帮我推荐一条裙子", List.of());
+        ChatResponse resp = service.chat(userId, null, "帮我推荐一条裙子", List.of());
 
         // 修复 #1：响应 conversationId 必须等于 create() 落库返回的 id（而非 ChatService 自造）
         assertThat(resp.getConversationId()).isEqualTo(createdId);
@@ -102,7 +105,7 @@ class ChatServiceTest {
     void lockTimeoutThrows503AndSkipsAgent() {
         when(sessionLock.tryAcquire(anyString(), eq(3000L))).thenReturn(false);
 
-        assertThatThrownBy(() -> service.chat(cid.toString(), "你好", List.of()))
+        assertThatThrownBy(() -> service.chat(userId, cid.toString(), "你好", List.of()))
                 .isInstanceOf(ApiException.class)
                 .satisfies(e -> assertThat(((ApiException) e).getStatus()).isEqualTo(503));
         verify(agentClient, never()).chat(anyString(), anyList(), anyList());
@@ -113,10 +116,23 @@ class ChatServiceTest {
         when(agentClient.chat(anyString(), anyList(), anyList()))
                 .thenThrow(new com.iclothes.exception.AgentUnavailableException("AI 服务暂不可用，请稍后重试"));
 
-        assertThatThrownBy(() -> service.chat(cid.toString(), "你好", List.of()))
+        assertThatThrownBy(() -> service.chat(userId, cid.toString(), "你好", List.of()))
                 .isInstanceOf(com.iclothes.exception.AgentUnavailableException.class);
         verify(agentClient, times(1)).chat(anyString(), anyList(), anyList()); // 不重试
         verify(sessionLock).release(lockKey); // finally 释放锁
+    }
+
+    @Test
+    void chatOnOtherUsersConversationReturns404() {
+        // 越权：会话存在但不属于当前用户 → 404，且不调用 agent
+        Conversation other = new Conversation();
+        other.setUserId(2L);
+        when(conversations.findById(cid)).thenReturn(other);
+
+        assertThatThrownBy(() -> service.chat(userId, cid.toString(), "你好", List.of()))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatus()).isEqualTo(404));
+        verify(agentClient, never()).chat(anyString(), anyList(), anyList());
     }
 
     // ------------------------------------------------------------------
@@ -138,7 +154,7 @@ class ChatServiceTest {
         }).when(agentClient).streamChat(anyString(), anyList(), anyList(),
                 any(PythonAgentClient.StreamHandler.class));
 
-        service.chatStream(cid.toString(), "你好", List.of(), emitter);
+        service.chatStream(userId, cid.toString(), "你好", List.of(), emitter);
 
         verify(emitter, times(4)).send(any(SseEmitter.SseEventBuilder.class)); // 2 delta + done + 元数据
         verify(emitter).complete();
@@ -160,7 +176,7 @@ class ChatServiceTest {
         }).when(agentClient).streamChat(anyString(), anyList(), anyList(),
                 any(PythonAgentClient.StreamHandler.class));
 
-        service.chatStream(cid.toString(), "你好", List.of(), emitter);
+        service.chatStream(userId, cid.toString(), "你好", List.of(), emitter);
 
         verify(emitter).completeWithError(any());
         verify(conversations, never()).appendAssistant(any(), anyString(), anyString());
@@ -172,7 +188,7 @@ class ChatServiceTest {
         when(sessionLock.tryAcquire(anyString(), eq(3000L))).thenReturn(false);
         SseEmitter emitter = mock(SseEmitter.class);
 
-        assertThatThrownBy(() -> service.chatStream(cid.toString(), "hi", List.of(), emitter))
+        assertThatThrownBy(() -> service.chatStream(userId, cid.toString(), "hi", List.of(), emitter))
                 .isInstanceOf(ApiException.class)
                 .satisfies(e -> assertThat(((ApiException) e).getStatus()).isEqualTo(503));
     }

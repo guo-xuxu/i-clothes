@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RestController;
 import com.iclothes.dto.ConversationDto;
 import com.iclothes.dto.ConversationSummaryDto;
@@ -38,8 +39,8 @@ public class ConversationController {
      * 作用：创建一个空的新对话，返回它的 id、标题、时间等信息。
      */
     @PostMapping("/api/conversations")
-    public ConversationDto create() {
-        return service.create();
+    public ConversationDto create(@RequestAttribute("userId") Long userId) {
+        return service.create(userId);
     }
 
     /**
@@ -50,8 +51,8 @@ public class ConversationController {
      * 返回类型是 ConversationSummaryDto（摘要），不是 ConversationDto（详情）。
      */
     @GetMapping("/api/conversations")
-    public List<ConversationSummaryDto> list() {
-        return service.listSummaries();
+    public List<ConversationSummaryDto> list(@RequestAttribute("userId") Long userId) {
+        return service.listSummaries(userId);
     }
 
     /**
@@ -62,9 +63,9 @@ public class ConversationController {
      * 例如 GET /api/conversations/abc123 → id = "abc123"
      */
     @GetMapping("/api/conversations/{id}")
-    public ConversationDto get(@PathVariable String id) {
+    public ConversationDto get(@PathVariable String id, @RequestAttribute("userId") Long userId) {
         // 先把字符串 id 转成 UUID，再查库；查不到就返回 404
-        ConversationDto dto = service.get(parseUuid(id));
+        ConversationDto dto = service.get(userId, parseUuid(id));
         if (dto == null) throw new ApiException(404, "会话不存在");
         return dto;
     }
@@ -76,8 +77,8 @@ public class ConversationController {
      * 删除成功返回 {"ok": true}，失败（不存在）返回 404。
      */
     @DeleteMapping("/api/conversations/{id}")
-    public Map<String, Boolean> delete(@PathVariable String id) {
-        if (!service.delete(parseUuid(id))) throw new ApiException(404, "会话不存在");
+    public Map<String, Boolean> delete(@PathVariable String id, @RequestAttribute("userId") Long userId) {
+        if (!service.delete(userId, parseUuid(id))) throw new ApiException(404, "会话不存在");
         return Map.of("ok", true);
     }
 

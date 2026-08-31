@@ -41,13 +41,13 @@ class ConversationServiceTest {
         UUID id = UUID.randomUUID();
         when(conversations.selectById(id)).thenReturn(null);
         ConversationService service = new ConversationService(conversations, messages);
-        assertThat(service.get(id)).isNull();
+        assertThat(service.get(1L, id)).isNull();
     }
 
     @Test
     void createProducesDto() {
         ConversationService service = new ConversationService(conversations, messages);
-        ConversationDto dto = service.create();
+        ConversationDto dto = service.create(1L);
         assertThat(dto.getId()).isNotNull();
         assertThat(dto.getTitle()).isEqualTo("新对话");
         assertThat(dto.getMessages()).isEmpty();
@@ -70,7 +70,7 @@ class ConversationServiceTest {
         // I3：追加消息后触达 updated_at（列表按更新时间倒序）——mock mapper 下验证 updateById 被调用且时间被刷新
         UUID id = UUID.randomUUID();
         LocalDateTime old = LocalDateTime.now().minusDays(1);
-        Conversation existing = new Conversation(id, "标题", old, old);
+        Conversation existing = new Conversation(id, "标题", old, old, 1L);
         when(conversations.selectById(id)).thenReturn(existing);
         ConversationService service = new ConversationService(conversations, messages);
 
