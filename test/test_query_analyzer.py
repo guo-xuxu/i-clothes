@@ -175,7 +175,9 @@ def test_query_analyzer_node_maps_intent(monkeypatch):
     assert "匀称" in out["analysis"]
 
 
-def test_query_analyzer_node_chat_with_image(monkeypatch):
+def test_query_analyzer_node_chat_with_image_upgraded_to_outfit(monkeypatch):
+    """方案 C：有图时千问判定 chat 也升格 outfit——避免 chat_reply（纯文本模型）收不到
+    图片而回复"没收到照片"；升格后走 recommend 路径，由 recommend_outfit 消费体征信息。"""
     class FakeVl:
         async def ainvoke(self, messages):
             return SimpleNamespace(content=(
@@ -185,8 +187,8 @@ def test_query_analyzer_node_chat_with_image(monkeypatch):
 
     out = asyncio.run(query_analyzer(
         {"images": ["data:image/png;base64,AAAA"], "description": "这张图好看吗"}))
-    assert out["intent"] == "chat"
-    assert out["intent_detail"] == "chat"
+    assert out["intent"] == "recommend"
+    assert out["intent_detail"] == "outfit"
 
 
 def test_query_analyzer_node_no_image_uses_keywords():
