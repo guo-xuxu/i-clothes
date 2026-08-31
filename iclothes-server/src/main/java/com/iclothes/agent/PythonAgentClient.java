@@ -99,6 +99,7 @@ public class PythonAgentClient {
                            List<AgentChatRequest.HistoryItem> history,
                            StreamHandler handler) {
         HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)  // uvicorn/h11 仅 HTTP/1.1；HTTP/2 ALPN 协商异常会丢 body
                 .connectTimeout(Duration.ofSeconds(3))
                 .build();
         HttpRequest request;

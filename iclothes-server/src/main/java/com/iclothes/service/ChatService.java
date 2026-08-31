@@ -147,6 +147,10 @@ public class ChatService {
                                 String title = persistStream(
                                         cid, message, images, reply.toString(), intent, isNew);
                                 try {
+                                    // 结束事件必须先转发：前端据此判定流完整结束
+                                    // （否则前端抛"流式响应未正常结束"，消息显示为出错）
+                                    emitter.send(SseEmitter.event().data(Map.of(
+                                            "done", true, "intent", intent)));
                                     // 元数据事件：前端绑定会话 id 与标题（流式接口无独立响应体）
                                     emitter.send(SseEmitter.event().data(Map.of(
                                             "conversation_id", cid.toString(),
