@@ -1,4 +1,4 @@
-"""测试穿搭推荐工作流的基本功能。"""
+﻿"""测试穿搭推荐工作流的基本功能。"""
 import asyncio
 import base64
 import sys
@@ -29,7 +29,7 @@ def image_to_data_url(image_path: str) -> str:
     return f"data:{mime_type};base64,{b64_data}"
 
 
-async def test_single_image():
+async def smoke_single_image():
     """测试单张图片的穿搭推荐。"""
     print("=" * 60)
     print("测试 1: 单张图片推荐")
@@ -57,7 +57,7 @@ async def test_single_image():
         raise
 
 
-async def test_multiple_images():
+async def smoke_multiple_images():
     """测试多张图片的穿搭推荐。"""
     print("\n" + "=" * 60)
     print("测试 2: 多张图片推荐")
@@ -87,7 +87,7 @@ async def test_multiple_images():
         raise
 
 
-async def test_no_description():
+async def smoke_no_description():
     """测试不提供描述的情况。"""
     print("\n" + "=" * 60)
     print("测试 3: 无描述文字")
@@ -123,7 +123,7 @@ async def main():
     print()
 
     # 运行测试
-    await test_single_image()
+    await smoke_single_image()
 
     # 如果第一个测试通过，继续运行其他测试
     # await test_multiple_images()

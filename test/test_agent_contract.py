@@ -74,8 +74,8 @@ def test_images_force_recommend(client):
     assert resp.json()["intent"] == "recommend"
 
 
-def test_image_with_chat_intent_goes_chat(client, monkeypatch):
-    # 模型判定为闲聊（即使有图）→ 对外契约 chat
+def test_image_with_chat_intent_upgraded_to_recommend(client, monkeypatch):
+    # 方案 C：有图时即使千问判定为闲聊也升格 outfit（修复发图闲聊收不到图）→ 对外契约 recommend
     monkeypatch.setattr(ModelRepository, "get_qianwen_vl", staticmethod(
         lambda: FakeModel('{"intent": "chat", "dimension": "general", "photo_type": "unknown", "info": {}}')))
     resp = client.post("/api/agent/chat", json={
@@ -84,7 +84,7 @@ def test_image_with_chat_intent_goes_chat(client, monkeypatch):
         "history": [],
     })
     assert resp.status_code == 200
-    assert resp.json()["intent"] == "chat"
+    assert resp.json()["intent"] == "recommend"
 
 
 def test_history_context_passed(client):
