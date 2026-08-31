@@ -13,6 +13,66 @@
 
 ---
 
+## [1.1.0] - 2026-08-31（用户认证 + 会话隔离 + 前端主题升级）
+
+### Added
+- **用户认证（Java 侧，从零新增）**：
+  - `db/migration/V2__auth.sql`：`users` 表 + `conversations` 加 `user_id`（存量会话清空）
+  - `entity/User.java` + `repository/UserMapper.java`（MyBatis-Plus BaseMapper）
+  - `dto/`：RegisterRequest / LoginRequest / UserInfo / LoginResponse（record）
+  - `config/JwtUtil.java`：jjwt HS256 生成/解析 token（7 天过期）
+  - `service/AuthService.java`：register/login/me，密码 BCrypt（spring-security-crypto）
+  - `controller/AuthController.java`：`POST /api/auth/register`、`POST /api/auth/login`、`GET /api/auth/me`
+  - `config/AppProperties.java` + `application.yml`：jwt 配置（secret/expire-days）
+- **会话隔离**：`config/AuthFilter.java`（OncePerRequestFilter 解析 Bearer token → request
+  attribute `userId`，白名单 register/login/health 放行、非 /api 放行、其余 401）+
+  `config/AuthConfig.java`（FilterRegistrationBean 注册，规避 @WebMvcTest 扫描 filter）
+- 认证契约测试：`AuthControllerTest`（注册成功/重名 409/登录成功/失败 401/me 三态，共 7 用例）、
+  `AuthFilterTest`（白名单/无 token 401/无效 token 401/有效 token 注入，4 用例）、
+  `ChatServiceTest` 越权用例（访问他人会话 → 404 且不调 Agent）
+- **前端登录/注册页** `components/LoginView.vue`：白底大地色玻璃卡片 + anime.js 动效
+  （卡片入场上移淡入 / 背景光斑漂浮 / logo 呼吸 / 模式切换淡入）
+- 前端 token 管理（`api.js`）：localStorage 存储、请求自动带 `Authorization: Bearer`、
+  401 统一跳登录（`setUnauthorizedHandler` 回调，auth 接口的 401 不触发）
+- 设计 spec：`docs/superpowers/specs/2026-08-31-auth-design.md`（契约先行）
+
+### Changed
+- 会话接口按用户隔离：`ConversationService`（create/listSummaries/get/delete 加 userId + 越权校验）、
+  `ConversationMapper.selectSummaries`（user_id 过滤）、`ChatService.chat/chatStream`
+  （加 userId + `resolveConversation` 越权 404）、`ChatController`/`RecommendController`
+  （`@RequestAttribute userId`）、`AuthController.me`（改 @RequestAttribute，去手动解析）
+- `query_analyzer.py`：有图且千问判定为 chat 时强制升格为 outfit（走推荐路径），
+  修复「发图闲聊 AI 回复"没收到照片"」的体验错位
+- **前端主题**：蓝紫黑 → 白底 + 大地色系（主色陶土 `#c0814f` + 脏粉 `#c48b9f`，
+  侧边栏燕麦米白 `#f7f2ec`，登录页白底暖色光斑）
+
+### Fixed
+- Element Plus 组件（"新建对话"按钮、tag 等）仍为默认蓝：style.css 顶部 `:root`
+  覆盖 `--el-color-primary` 及 light-3/5/7/8/9、dark-2 变体
+
+**变更原因**：补充用户体系（登录 + 分 id 对话 + 上下文隔离），采用「JWT + BCrypt 账密 +
+手写轻量 AuthFilter（不引完整 Spring Security）」的最小实现；隔离全在 Java 侧，Python
+无状态 Agent 零改动。前端随之补齐登录页与 token 管理，并将冷色主题调整为更贴合穿搭
+调性的白底大地色系。
+
+**影响文件**：
+- 后端 `iclothes-server`：`pom.xml`（jjwt + spring-security-crypto）、
+  `db/migration/V2__auth.sql`、`entity/User.java`、`repository/UserMapper.java`、
+  `dto/{RegisterRequest,LoginRequest,UserInfo,LoginResponse}.java`、
+  `config/{JwtUtil,AuthFilter,AuthConfig,AppProperties}.java`、
+  `service/AuthService.java`、`controller/AuthController.java`、
+  `entity/Conversation.java`、`service/{ConversationService,ChatService}.java`、
+  `repository/ConversationMapper.java`、`controller/{ConversationController,ChatController,RecommendController}.java`、
+  `IclothesApplication.java`、`application.yml`
+- 测试：`AuthControllerTest`、`AuthFilterTest`（新增）、`ChatServiceTest`、`ConversationServiceTest`、
+  `ChatControllerTest`、`ConversationControllerTest`、`RecommendControllerTest`、`RepositoryIT`（更新）
+- Python：`app/graph/nodes/query_analyzer.py`
+- 前端：`package.json`（animejs 3.2.2）、`src/api.js`、`src/App.vue`、
+  `src/components/{LoginView,ConversationSidebar,MessageItem}.vue`、`src/style.css`
+- 文档：`docs/superpowers/specs/2026-08-31-auth-design.md`（新建）
+
+---
+
 ## [1.0.0] - 2026-08-31（v1 发布：RAG 在线检索 + 流式输出 + 双服务生产部署）
 
 ### Added
@@ -249,7 +309,14 @@ MVP 阶段即确立 api/services/repositories 分层边界，为后续用户信�
 - [x] 流式输出（SSE：Python → Java 代理 → 前端打字机）
 - [x] 生产部署（阿里云 ECS，公网可访问）
 
-### v1.1.0 (计划中)
+### v1.1.0 ✅ 已发布（2026-08-31）
+**目标**：用户认证 + 会话隔离 + 前端主题升级
+- [x] 用户认证（JWT + BCrypt 账密 + 注册/登录/me）
+- [x] 会话按用户隔离（越权 404）+ 前端登录页与 token 管理
+- [x] 有图强制走推荐路径（修复发图闲聊看不到图）
+- [x] 前端主题升级（白底 + 大地色系：陶土 + 脏粉）
+
+### v1.2.0 (计划中)
 **目标**：检索质量与体验优化
 - 检索调优：top-k / 距离阈值 / 改写策略按维度差异化
 - 推荐质量评估与提示词迭代

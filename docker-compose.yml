@@ -60,6 +60,7 @@ services:
       FRONTEND_DIST: dist
       QIANWEN_API_KEY: ${QIANWEN_API_KEY}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
     ports:
       - "8080:8080"
     depends_on:
