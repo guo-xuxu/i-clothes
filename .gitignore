@@ -43,3 +43,5 @@ app/knowledge/data/
 # 备份/工具目录
 .git.bak-*/
 .workbuddy/
+
+iclothes-deploy.tar.gz
